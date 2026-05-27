@@ -92,3 +92,19 @@ Moving Steam fetches into Worker-only code keeps secrets server-side and prevent
 - Added daily scheduled refresh handler and cron trigger configuration in `wrangler.toml`.
 - Documented required secrets and architecture in `README.md`.
 - Left parsing/filter UI behavior unchanged except for data source plumbing.
+
+
+## Resolve KV Namespace Placeholder Deployment Failure
+**Date and time:** 2026-05-27 01:40 UTC
+
+**Summarised context:**
+Reviewed the Cloudflare deploy log showing API error `code: 10042` and warning diff indicating `wrangler.toml` still used placeholder KV namespace IDs while Dashboard config had a real namespace ID.
+
+**Summarised reasoning:**
+Wrangler deploy in non-interactive CI applies local `wrangler.toml` bindings, so placeholder IDs override the working remote binding and cause validation failure. Replacing placeholders with the actual namespace ID aligns local and remote config and unblocks deploys.
+
+**Summarised changes:**
+- Updated `wrangler.toml` KV binding `id` from placeholder to the real namespace ID from deploy logs.
+- Updated `wrangler.toml` `preview_id` to the same real namespace ID as a safe default until a separate preview namespace is created.
+- Left Worker runtime logic and API behavior unchanged.
+- Added this decision-log entry at the end of `AGENTS.md` in chronological order.
