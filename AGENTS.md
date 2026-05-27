@@ -191,3 +191,32 @@ The prior keyword-heavy classifier produced coarse types and collapsed many mean
 - Updated standalone `app.js` and synced identical logic into Worker-embedded `APP_JS` in `worker.js`.
 - Updated `styles.css` and synced Worker-embedded `STYLES_CSS` for distinct semantic color classes.
 - Left Worker `/api/posts`, KV cache flow, cron refresh, admin refresh endpoint, and Wrangler config unchanged.
+
+## Add Crawlable SEO Pages, Metadata, Robots, and Sitemap for Public Indexing
+**Date and time:** 2026-05-27 03:10 UTC
+
+**Summarised context:**
+Reviewed current Worker routing, homepage HTML shell output, and API/KV behavior to confirm the app was functionally correct but primarily JS-driven for content discovery.
+
+**Summarised reasoning:**
+Search engines index static, semantic HTML more reliably than JS-only shells. Adding lightweight server-rendered content, route-level metadata, and standard crawl/index files improves discoverability without changing API behavior or client filtering logic.
+
+**Summarised changes:**
+- Added Worker routes for `/robots.txt` and `/sitemap.xml` with crawler-friendly defaults and absolute URLs.
+- Added server-rendered homepage intro and recent update links so crawlers/users see meaningful content immediately.
+- Added server-rendered `/post/:gid` pages with canonical metadata, OG/Twitter tags, and JSON-LD `NewsArticle`.
+- Improved homepage metadata with clear branding and Deadlock patch-note focused wording.
+- Added small helper functions for HTML/XML escaping, absolute URL generation, and safe text truncation.
+- Kept `/api/posts`, KV refresh behavior, cron schedule, and admin refresh auth unchanged.
+- Updated README with a dedicated SEO/indexing section and documented limitations.
+
+**Checks run:**
+- `node --check worker.js`
+- `node --check app.js`
+- `curl -i http://127.0.0.1:8787/robots.txt` (via local Wrangler dev)
+- `curl -i http://127.0.0.1:8787/sitemap.xml` (via local Wrangler dev)
+- `curl -s http://127.0.0.1:8787/ | head -n 80` (via local Wrangler dev)
+- `curl -i http://127.0.0.1:8787/post/<gid>` using a gid from `/api/posts` (via local Wrangler dev)
+
+**Remaining TODOs:**
+- Consider adding persistent OG image support for richer social snippets if a stable image source is introduced.

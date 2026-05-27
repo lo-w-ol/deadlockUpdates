@@ -14,3 +14,16 @@
 wrangler secret put STEAM_API_KEY
 wrangler secret put ADMIN_REFRESH_TOKEN
 ```
+
+## SEO and indexing improvements
+
+- Added crawl-friendly server-rendered HTML for the homepage and `/post/:gid` pages, including visible intro content and discoverable internal links to recent updates.
+- Added SEO metadata: improved titles/descriptions, canonical URLs, Open Graph tags, and Twitter card tags on home and post pages.
+- Added `robots.txt` at `/robots.txt` allowing crawling and referencing the sitemap.
+- Added sitemap generation at `/sitemap.xml` with absolute URLs for the homepage and cached post pages, including `lastmod` timestamps.
+- Added basic JSON-LD (`WebSite` for homepage and `NewsArticle` for post pages).
+
+### Current limitations / future improvements
+
+- Post pages are generated from KV-cached Steam items; if a post has not been cached yet, it will not appear in the sitemap or resolve at `/post/:gid`.
+- Richer social previews (images per post) are not included yet because upstream image metadata is inconsistent.

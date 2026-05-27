@@ -34,3 +34,6 @@ button { cursor:pointer; }
 .patch-category h4 { margin: .2rem 0 .45rem 0; color: #cbd5e1; }
 .patch-divider { height: 1px; background: linear-gradient(90deg, transparent, #3b4a72, transparent); margin: .8rem 0 1.1rem; }
 @media (max-width: 900px){ .grid{ grid-template-columns:1fr; } header{ position:static; } }
+.intro { margin-bottom: 1rem; }
+.crawl-list { margin: .5rem 0 0; padding-left: 1.2rem; }
+footer { border-top:1px solid #223; margin-top:1rem; }
