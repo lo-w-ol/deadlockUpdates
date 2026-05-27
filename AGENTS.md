@@ -74,3 +74,21 @@ Splitting the inline script/style into dedicated assets reduces monolithic surfa
 - Updated `worker.js` HTML shell to load external assets while preserving existing UI and behavior.
 - Added structured debug instrumentation (`[DeadlockInit]`), per-stage progress logs, `window.error`/`unhandledrejection` hooks, and `window.__deadlockDebug.dump()` trace export.
 - Left parsing/fetch product behavior unchanged beyond diagnostics and modularization.
+
+
+## Move Steam Access to Worker KV-Backed API with Daily Refresh
+**Date and time:** 2026-05-27 01:22 UTC
+
+**Summarised context:**
+Reviewed the request to avoid client-side Steam calls, use a secret key safely in the Worker, prevent open proxy abuse/custom upstream calls, and persist updates with automatic daily checks.
+
+**Summarised reasoning:**
+Moving Steam fetches into Worker-only code keeps secrets server-side and prevents browser misuse. Restricting public endpoints to a fixed `/api/posts` shape (no user-controlled upstream parameters) and protecting manual refresh with a bearer token reduces abuse. Persisting results in KV with cron-driven refresh gives reliable daily update storage even when clients are idle.
+
+**Summarised changes:**
+- Updated client fetch path to call Worker endpoint `/api/posts` instead of Steam directly.
+- Added Worker API endpoint for cached posts, KV-backed storage logic, and fixed Steam upstream request builder.
+- Added protected `/admin/refresh` endpoint requiring `ADMIN_REFRESH_TOKEN` bearer auth.
+- Added daily scheduled refresh handler and cron trigger configuration in `wrangler.toml`.
+- Documented required secrets and architecture in `README.md`.
+- Left parsing/filter UI behavior unchanged except for data source plumbing.

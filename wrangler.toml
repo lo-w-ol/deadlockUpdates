@@ -2,3 +2,11 @@ name = "deadlockupdates"
 main = "worker.js"
 compatibility_date = "2026-05-27"
 workers_dev = true
+
+[triggers]
+crons = ["0 3 * * *"]
+
+[[kv_namespaces]]
+binding = "DEADLOCK_KV"
+id = "REPLACE_WITH_PROD_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
