@@ -31,10 +31,56 @@ function characterBySlug(slug) { var norm = slugifyName(slug); return DEADLOCK_C
 function parseHeroChangesFromPost(post) { var txt = String(post && post.contents || '').replace(/<\s*br\s*\/?\s*>/gi, '\n').replace(/<[^>]+>/g, ' ').replace(/\[\*]/gi, '\n- ').replace(/\[\/?(?:p|list|b|i|u|h[1-6]|quote|code|url(?:=[^\]]+)?)\]/gi, '\n').replace(/\r/g, ''); var lines = txt.split('\n'); var category = 'General'; var out = []; var i; for (i = 0; i < lines.length; i++) { var line = lines[i].replace(/\s+/g, ' ').trim(); if (!line) continue; var sec = line.match(/^\[\s*([^\]]+?)\s*\]$/); if (sec) { category = sec[1].trim(); continue; } var cleaned = line.replace(/^\s*(?:[-•*])\s+/, '').trim(); var m = cleaned.match(/^([^:]{2,60}):\s*(.+)$/); if (/heroes?/i.test(category) && m) { out.push({ category: category, primaryEntity: m[1].trim(), raw: m[2].trim() || cleaned }); } } return out; }
 function semanticClass(type) { return ({ buff:'change-buff', nerf:'change-nerf', mixed:'change-mixed', rework:'change-rework', bugfix:'change-bugfix', neutral:'change-neutral' }[type] || 'change-neutral'); }
 
-function getClientIp(request) { return request.headers.get('CF-Connecting-IP') || 'unknown'; }
 async function fetchSteamFromOrigin(env) { const steamUrl = new URL('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/'); steamUrl.searchParams.set('appid', String(APP_ID)); steamUrl.searchParams.set('count', String(MAX_ITEMS)); steamUrl.searchParams.set('maxlength', '0'); steamUrl.searchParams.set('format', 'json'); steamUrl.searchParams.set('feeds', 'steam_community_announcements'); if (env.STEAM_API_KEY) steamUrl.searchParams.set('key', env.STEAM_API_KEY); const res = await fetch(steamUrl.toString(), { cf: { cacheTtl: 300, cacheEverything: false } }); if (!res.ok) throw new Error('Steam upstream ' + res.status); const json = await res.json(); return (json && json.appnews && json.appnews.newsitems) || []; }
-async function refreshStoredNews(env, source) { const items = await fetchSteamFromOrigin(env); const now = new Date().toISOString(); await env.DEADLOCK_KV.put(NEWS_KEY, JSON.stringify(items)); await env.DEADLOCK_KV.put(NEWS_META_KEY, JSON.stringify({ lastRefreshedAt: now, source: source || 'manual', count: items.length })); return { items, lastRefreshedAt: now, source: source || 'manual' }; }
-async function readStoredNews(env) { const [rawItems, rawMeta] = await Promise.all([env.DEADLOCK_KV.get(NEWS_KEY), env.DEADLOCK_KV.get(NEWS_META_KEY)]); return { items: rawItems ? JSON.parse(rawItems) : null, meta: rawMeta ? JSON.parse(rawMeta) : null }; }
+async function hashText(text) {
+  var data = new TextEncoder().encode(String(text || ''));
+  var digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map(function(b){ return b.toString(16).padStart(2, '0'); }).join('');
+}
+function updateMemorySnapshot(snapshot) {
+  memorySnapshot = snapshot;
+  memorySnapshotExpiresAt = Date.now() + MEMORY_SNAPSHOT_TTL_MS;
+}
+async function getCachedPostsSnapshot(env) {
+  var now = Date.now();
+  if (memorySnapshot && now < memorySnapshotExpiresAt) return memorySnapshot;
+  if (memorySnapshotPromise) return memorySnapshotPromise;
+  memorySnapshotPromise = readStoredNews(env).then(function(snapshot) { updateMemorySnapshot(snapshot); return snapshot; }).finally(function() { memorySnapshotPromise = null; });
+  return memorySnapshotPromise;
+}
+async function refreshStoredNews(env, source) {
+  const items = await fetchSteamFromOrigin(env);
+  const now = new Date().toISOString();
+  const itemsJson = JSON.stringify(items);
+  const nextHash = await hashText(itemsJson);
+  const existing = await readStoredNews(env);
+  const existingHash = existing && existing.meta && existing.meta.hash ? existing.meta.hash : null;
+  const meta = { lastRefreshedAt: now, source: source || 'manual', count: items.length, hash: nextHash };
+  if (existingHash === nextHash) {
+    const unchanged = { items: existing.items || items, meta: Object.assign({}, existing.meta || {}, meta), changed: false };
+    updateMemorySnapshot(unchanged);
+    return { items: unchanged.items, lastRefreshedAt: meta.lastRefreshedAt, source: meta.source, changed: false };
+  }
+  const snapshot = { items: items, meta: meta };
+  await env.DEADLOCK_KV.put(NEWS_SNAPSHOT_V2_KEY, JSON.stringify(snapshot));
+  await env.DEADLOCK_KV.put(NEWS_KEY, itemsJson);
+  await env.DEADLOCK_KV.put(NEWS_META_KEY, JSON.stringify(meta));
+  updateMemorySnapshot(snapshot);
+  return { items, lastRefreshedAt: now, source: source || 'manual', changed: true };
+}
+async function readStoredNews(env) {
+  const rawSnapshot = await env.DEADLOCK_KV.get(NEWS_SNAPSHOT_V2_KEY);
+  if (rawSnapshot) {
+    try {
+      const parsed = JSON.parse(rawSnapshot);
+      return { items: Array.isArray(parsed.items) ? parsed.items : null, meta: parsed.meta || null };
+    } catch (_) {}
+  }
+  const [rawItems, rawMeta] = await Promise.all([env.DEADLOCK_KV.get(NEWS_KEY), env.DEADLOCK_KV.get(NEWS_META_KEY)]);
+  const items = rawItems ? JSON.parse(rawItems) : null;
+  const meta = rawMeta ? JSON.parse(rawMeta) : null;
+  return { items: items, meta: meta };
+}
 
 function buildRobots(origin) { return `User-agent: *\nAllow: /\nSitemap: ${absoluteUrl(origin, '/sitemap.xml')}\n`; }
 function buildSitemap(origin, items, lastRefreshedAt) { const now = lastRefreshedAt || new Date().toISOString(); const urls = [{ loc: absoluteUrl(origin, '/'), lastmod: now }, { loc: absoluteUrl(origin, '/characters'), lastmod: now }]; DEADLOCK_CHARACTERS.forEach(function(c){ urls.push({ loc: absoluteUrl(origin, '/characters/' + c.slug), lastmod: now }); }); (items || []).slice(0, 100).forEach(function(item) { if (item && item.gid) urls.push({ loc: absoluteUrl(origin, '/post/' + encodeURIComponent(item.gid)), lastmod: item.date ? new Date(item.date * 1000).toISOString() : now }); }); return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(function(u){ return `  <url><loc>${escapeXml(u.loc)}</loc><lastmod>${escapeXml(u.lastmod)}</lastmod></url>`; }).join('\n')}\n</urlset>`; }
@@ -62,21 +108,24 @@ function buildCharacterDetailHtml(origin, character, data) { var path = '/charac
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const cache = await readStoredNews(env);
     if (url.pathname === '/health') return new Response('ok', { status: 200 });
-    if (url.pathname === '/robots.txt') return new Response(buildRobots(url.origin), { headers: { 'content-type': 'text/plain; charset=utf-8' } });
-    if (url.pathname === '/sitemap.xml') return new Response(buildSitemap(url.origin, cache.items, cache.meta && cache.meta.lastRefreshedAt), { headers: { 'content-type': 'application/xml; charset=utf-8' } });
-    if (url.pathname === '/app.js') return new Response(APP_JS, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' } });
-    if (url.pathname === '/styles.css') return new Response(STYLES_CSS, { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' } });
+    if (url.pathname === '/robots.txt') return new Response(buildRobots(url.origin), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600, s-maxage=86400' } });
+    if (url.pathname === '/app.js') return new Response(APP_JS, { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600, s-maxage=86400' } });
+    if (url.pathname === '/styles.css') return new Response(STYLES_CSS, { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=3600, s-maxage=86400' } });
+    if (url.pathname === '/sitemap.xml') {
+      const cache = await getCachedPostsSnapshot(env);
+      return new Response(buildSitemap(url.origin, cache.items, cache.meta && cache.meta.lastRefreshedAt), { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=900, s-maxage=3600' } });
+    }
     if (url.pathname === '/api/posts') {
-      const ip = getClientIp(request);
-      if (cache.items && cache.items.length) return Response.json({ items: cache.items, source: 'kv-cache', lastRefreshedAt: cache.meta && cache.meta.lastRefreshedAt, client: ip }, { headers: { 'cache-control': 'public, max-age=300, stale-while-revalidate=900' } });
+      const cache = await getCachedPostsSnapshot(env);
+      if (cache.items && cache.items.length) return Response.json({ items: cache.items, source: 'kv-cache', lastRefreshedAt: cache.meta && cache.meta.lastRefreshedAt }, { headers: { 'cache-control': 'public, max-age=300, stale-while-revalidate=900' } });
       const refreshed = await refreshStoredNews(env, 'lazy-first-request');
       return Response.json({ items: refreshed.items, source: refreshed.source, lastRefreshedAt: refreshed.lastRefreshedAt }, { headers: { 'cache-control': 'public, max-age=300, stale-while-revalidate=900' } });
     }
     if (url.pathname === '/characters') {
+      const cache = await getCachedPostsSnapshot(env);
       const map = collectCharacterData(cache.items || []);
-      return new Response(buildCharactersIndexHtml(url.origin, map, cache.meta), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+      return new Response(buildCharactersIndexHtml(url.origin, map, cache.meta), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=900' } });
     }
     if (url.pathname.startsWith('/hero/')) {
       return Response.redirect(absoluteUrl(url.origin, '/characters/' + url.pathname.slice('/hero/'.length)), 301);
@@ -84,24 +133,27 @@ export default {
     if (url.pathname.startsWith('/characters/')) {
       const slug = decodeURIComponent(url.pathname.slice('/characters/'.length));
       const character = characterBySlug(slug);
-      if (!character) return new Response(`<!doctype html><html><body><main><h1>Character not found</h1><p><a href="/characters">Browse all characters</a></p></main></body></html>`, { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } });
+      if (!character) return new Response(`<!doctype html><html><body><main><h1>Character not found</h1><p><a href="/characters">Browse all characters</a></p></main></body></html>`, { status: 404, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=900' } });
+      const cache = await getCachedPostsSnapshot(env);
       const map = collectCharacterData(cache.items || []);
-      return new Response(buildCharacterDetailHtml(url.origin, character, map[character.slug]), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+      return new Response(buildCharacterDetailHtml(url.origin, character, map[character.slug]), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=900' } });
     }
     if (url.pathname.startsWith('/post/')) {
       const gid = decodeURIComponent(url.pathname.slice('/post/'.length));
+      const cache = await getCachedPostsSnapshot(env);
       const post = (cache.items || []).find(function(item){ return String(item.gid) === gid; });
-      if (!post) return new Response('Post not found', { status: 404 });
-      return new Response(buildPostHtml(url.origin, post), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      if (!post) return new Response('Post not found', { status: 404, headers: { 'cache-control': 'public, max-age=300, s-maxage=900' } });
+      return new Response(buildPostHtml(url.origin, post), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=900' } });
     }
     if (url.pathname === '/admin/refresh') {
       const auth = request.headers.get('authorization') || '';
       const expected = env.ADMIN_REFRESH_TOKEN ? 'Bearer ' + env.ADMIN_REFRESH_TOKEN : '';
-      if (!expected || auth !== expected) return new Response('unauthorized', { status: 401 });
+      if (!expected || auth !== expected) return new Response('unauthorized', { status: 401, headers: { 'cache-control': 'no-store' } });
       const refreshed = await refreshStoredNews(env, 'admin-refresh');
-      return Response.json({ ok: true, count: refreshed.items.length, lastRefreshedAt: refreshed.lastRefreshedAt });
+      return Response.json({ ok: true, count: refreshed.items.length, lastRefreshedAt: refreshed.lastRefreshedAt, changed: refreshed.changed }, { headers: { 'cache-control': 'no-store' } });
     }
-    return new Response(buildHtml(url.origin, cache.items, cache.meta), { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+    const cache = await getCachedPostsSnapshot(env);
+    return new Response(buildHtml(url.origin, cache.items, cache.meta), { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=900' } });
   },
   async scheduled(event, env, ctx) { ctx.waitUntil(refreshStoredNews(env, 'scheduled-daily')); }
 };
