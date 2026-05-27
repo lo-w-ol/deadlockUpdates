@@ -108,3 +108,19 @@ Wrangler deploy in non-interactive CI applies local `wrangler.toml` bindings, so
 - Updated `wrangler.toml` `preview_id` to the same real namespace ID as a safe default until a separate preview namespace is created.
 - Left Worker runtime logic and API behavior unchanged.
 - Added this decision-log entry at the end of `AGENTS.md` in chronological order.
+
+## Eliminate Client-Side Steam Calls from Worker-Served App Bundle
+**Date and time:** 2026-05-27 01:41 UTC
+
+**Summarised context:**
+Reviewed browser console errors showing CORS failures to `api.steampowered.com` and compared the deployed Worker-served `/app.js` source inside `worker.js` against the standalone `app.js` file.
+
+**Summarised reasoning:**
+The Worker was still serving an embedded legacy app bundle that fetched Steam directly (`STEAM_URL`), so browsers hit CORS even though newer repository code expected `/api/posts`. The served bundle must be aligned to the Worker API path to enforce server-side upstream access only.
+
+**Summarised changes:**
+- Updated the embedded `APP_JS` bundle in `worker.js` to use `API_POSTS_URL` (`/api/posts`) instead of direct Steam URL fetches.
+- Updated embedded fetch response parsing to consume Worker API shape (`items`, `source`, `lastRefreshedAt`) and adjusted user-facing status text accordingly.
+- Updated embedded HTML shell copy in `worker.js` to reflect Worker API sourcing (noscript/header/refresh button wording).
+- Left KV refresh, admin refresh auth, and scheduled refresh behavior unchanged.
+- Added this decision-log entry at the end of `AGENTS.md` in chronological order.
