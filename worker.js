@@ -44,6 +44,13 @@ function buildHtml() {
     .card h3 { margin:.2rem 0 .35rem 0; }
     .hidden { display:none; }
     .change { border-top:1px dashed #334; padding:.5rem 0; }
+    .diff-list { margin-top:.65rem; border:1px solid #2a375f; border-radius:10px; overflow:hidden; }
+    .diff-line { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding:.4rem .55rem; border-top:1px solid #25304f; white-space:pre-wrap; }
+    .diff-line:first-child { border-top:none; }
+    .diff-buff { background:#0e2a1b; color:#86efac; }
+    .diff-nerf { background:#331313; color:#fca5a5; }
+    .diff-change { background:#3a2b10; color:#fde68a; }
+    .diff-other { background:#17213d; color:#cbd5e1; }
     .tag-buff { border-color:#14532d; color:#86efac; }
     .tag-nerf { border-color:#7f1d1d; color:#fca5a5; }
     .tag-fix,.tag-qol,.tag-mechanics { border-color:#4b5563; color:#d1d5db; }
@@ -223,18 +230,34 @@ function buildHtml() {
     el.detail.classList.add('hidden'); el.home.classList.remove('hidden');
     el.home.innerHTML = state.filtered.map(p=>{
       const tops = summaryTop(p);
-      return '<article class="card"><h3><a href="#/post/'+p.gid+'">'+escapeHtml(p.title)+'</a></h3><div class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Steam URL</a></div><div class="chips">'+p.categories.map(c=>chip(c)).join('')+'</div><p class="muted">Parsed changes: '+p.changes.length+'</p><p class="muted">Top: '+escapeHtml(tops)+'</p></article>';
+      const preview = p.changes.slice(0,12).map(renderDiffLine).join('');
+      return '<article class="card"><h3><a href="#/post/'+p.gid+'">'+escapeHtml(p.title)+'</a></h3><div class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Steam URL</a></div><div class="chips">'+p.categories.map(c=>chip(c)).join('')+'</div><p class="muted">Parsed changes: '+p.changes.length+'</p><p class="muted">Top: '+escapeHtml(tops)+'</p><div class="diff-list">'+preview+'</div></article>';
     }).join('') || '<div class="card">No posts match current filters.</div>';
   }
 
   function renderPostDetail(gid){
     const p = state.posts.find(x=>x.gid===gid); if (!p){ location.hash='#/'; return; }
     el.home.classList.add('hidden'); el.detail.classList.remove('hidden');
-    const byCat = p.changes.reduce((m,c)=>(m[c.category]??=[]).push(c),{});
+    const byCat = p.changes.reduce((m,c)=>((m[c.category] ??= []).push(c), m),{});
     el.detail.innerHTML = '<h2>'+escapeHtml(p.title)+'</h2><p class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Open on Steam</a></p>'+
       '<button id="toggle-raw">Toggle raw text</button><pre id="raw" class="hidden">'+escapeHtml(p.rawText)+'</pre>'+
       Object.entries(byCat).map(([cat,list])=>'<section><h3>['+escapeHtml(cat)+']</h3>'+list.map(c=>'<div class="change"><div>'+escapeHtml(c.raw)+'</div><div class="chips">'+c.tags.map(chip).join('')+chip(c.changeType,'tag-'+c.changeType)+'</div></div>').join('')+'</section>').join('');
     document.getElementById('toggle-raw').onclick = ()=>document.getElementById('raw').classList.toggle('hidden');
+  }
+
+
+  function renderDiffLine(change){
+    const kind = diffKind(change.changeType);
+    const prefix = kind==='buff' ? '+' : kind==='nerf' ? '-' : kind==='change' ? '~' : '•';
+    const cls = kind==='buff' ? 'diff-buff' : kind==='nerf' ? 'diff-nerf' : kind==='change' ? 'diff-change' : 'diff-other';
+    return '<div class="diff-line '+cls+'">'+prefix+' '+escapeHtml(change.raw)+'</div>';
+  }
+
+  function diffKind(type){
+    if (type==='buff') return 'buff';
+    if (type==='nerf') return 'nerf';
+    if (['changed','rework','added','removed','mechanics','qol'].includes(type)) return 'change';
+    return 'other';
   }
 
   function routeRender(){ const m=location.hash.match(/^#\/post\/(.+)$/); if (m) renderPostDetail(m[1]); else renderHome(); }
