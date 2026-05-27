@@ -90,7 +90,7 @@ function buildHtml() {
   </main>
 
 <script>
-(() => {
+(function() {
   const APP_ID = 1422450;
   const CACHE_KEY = 'deadlock-news-parser-v1';
   const STEAM_URL = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=1422450&count=100&maxlength=0&format=json&feeds=steam_community_announcements';
@@ -113,7 +113,7 @@ function buildHtml() {
       const res = await fetch(STEAM_URL, { mode:'cors' });
       if (!res.ok) throw new Error('Steam HTTP ' + res.status);
       const json = await res.json();
-      return json?.appnews?.newsitems || [];
+      return (json && json.appnews && json.appnews.newsitems) || [];
     } catch (err) {
       el.cors.classList.remove('hidden');
       el.cors.textContent = 'Direct browser access to Steam may be blocked by CORS/network policy. This static Worker intentionally has no proxy/API layer. Add a dedicated proxy/API if you need reliable cross-origin access.';
@@ -128,7 +128,7 @@ function buildHtml() {
     s = s.replace(/<\s*br\s*\/?\s*>/gi,'\n').replace(/<\/?p[^>]*>/gi,'\n').replace(/<\/?div[^>]*>/gi,'\n').replace(/<\/?li[^>]*>/gi,'\n- ');
     s = s.replace(/<[^>]+>/g,' ');
     s = s.replace(/\r/g,'').replace(/\n{3,}/g,'\n\n');
-    return s.split('\n').map(x=>x.trim()).filter(Boolean).join('\n');
+    return s.split('\n').map(function(x){ return x.trim(); }).filter(Boolean).join('\n');
   }
 
   function parseSectionsAndBullets(normalized){
@@ -142,7 +142,7 @@ function buildHtml() {
     return out;
   }
 
-  function detectStatTags(text){ const lower = text.toLowerCase(); return STAT_DICTIONARY.filter(s=> lower.includes(s.toLowerCase())); }
+  function detectStatTags(text){ const lower = text.toLowerCase(); return STAT_DICTIONARY.filter(function(s){ return lower.includes(s.toLowerCase()); }); }
 
   function detectEntity(category, text){
     let primaryEntity=null, secondaryEntity=null, entityType='unknown';
@@ -199,7 +199,7 @@ function buildHtml() {
     const statTags = detectStatTags(text); const entity = detectEntity(category, text); const statChanges = extractStatChanges(text); const changeType = classifyChangeType(text);
     const tags = [...new Set([entity.primaryEntity, entity.secondaryEntity, ...statTags].filter(Boolean))];
     let confidence = 0.5;
-    if (entity.primaryEntity && changeType!=='unknown' && statChanges.some(x=>x.oldValue && x.newValue)) confidence=0.95;
+    if (entity.primaryEntity && changeType!=='unknown' && statChanges.some(function(x){ return x.oldValue && x.newValue; })) confidence=0.95;
     else if (entity.primaryEntity && changeType!=='unknown') confidence=0.85;
     else if (category) confidence=0.7;
     return { id: category + '-' + idx, raw:text, category, primaryEntity:entity.primaryEntity, secondaryEntity:entity.secondaryEntity, entityType:entity.entityType, tags, statTags, changeType, statChanges, confidence };
@@ -208,19 +208,19 @@ function buildHtml() {
   function parsePost(post){
     const normalized = normalizeSteamContent(post.contents || '');
     const bullets = parseSectionsAndBullets(normalized);
-    const changes = bullets.map((b,i)=>parseChangeLine(b.category,b.text,i));
-    const categories = [...new Set(changes.map(c=>c.category))];
+    var changes = bullets.map(function(b,i){ return parseChangeLine(b.category,b.text,i); });
+    var categories = Array.from(new Set(changes.map(function(c){ return c.category; })));
     return { appid:APP_ID, gid:post.gid, title:post.title, url:post.url, date:new Date(post.date*1000).toISOString(), categories, changes, rawText: normalized };
   }
 
   function applyFilters(){
     const q = el.search.value.toLowerCase(); const c=el.category.value; const e=el.entity.value; const s=el.stat.value; const t=el.type.value;
-    state.filtered = state.posts.filter(p=>{
-      const blob=(p.title+' '+p.rawText+' '+p.changes.flatMap(x=>x.tags).join(' ')).toLowerCase(); if (q && !blob.includes(q)) return false;
+    state.filtered = state.posts.filter(function(p){
+      const blob=(p.title+' '+p.rawText+' '+p.changes.flatMap(function(x){ return x.tags; }).join(' ')).toLowerCase(); if (q && !blob.includes(q)) return false;
       if (c && !p.categories.includes(c)) return false;
-      if (e && !p.changes.some(x=>x.tags.includes(e))) return false;
-      if (s && !p.changes.some(x=>x.statTags.includes(s))) return false;
-      if (t && !p.changes.some(x=>x.changeType===t)) return false;
+      if (e && !p.changes.some(function(x){ return x.tags.includes(e); })) return false;
+      if (s && !p.changes.some(function(x){ return x.statTags.includes(s); })) return false;
+      if (t && !p.changes.some(function(x){ return x.changeType===t; })) return false;
       return true;
     });
     routeRender();
@@ -228,21 +228,21 @@ function buildHtml() {
 
   function renderHome(){
     el.detail.classList.add('hidden'); el.home.classList.remove('hidden');
-    el.home.innerHTML = state.filtered.map(p=>{
+    el.home.innerHTML = state.filtered.map(function(p){
       const tops = summaryTop(p);
-      const preview = p.changes.slice(0,12).map(renderDiffLine).join('');
-      return '<article class="card"><h3><a href="#/post/'+p.gid+'">'+escapeHtml(p.title)+'</a></h3><div class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Steam URL</a></div><div class="chips">'+p.categories.map(c=>chip(c)).join('')+'</div><p class="muted">Parsed changes: '+p.changes.length+'</p><p class="muted">Top: '+escapeHtml(tops)+'</p><div class="diff-list">'+preview+'</div></article>';
+      var preview = p.changes.slice(0,12).map(renderDiffLine).join('');
+      return '<article class="card"><h3><a href="#/post/'+p.gid+'">'+escapeHtml(p.title)+'</a></h3><div class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Steam URL</a></div><div class="chips">'+p.categories.map(function(c){ return chip(c); }).join('')+'</div><p class="muted">Parsed changes: '+p.changes.length+'</p><p class="muted">Top: '+escapeHtml(tops)+'</p><div class="diff-list">'+preview+'</div></article>';
     }).join('') || '<div class="card">No posts match current filters.</div>';
   }
 
   function renderPostDetail(gid){
-    const p = state.posts.find(x=>x.gid===gid); if (!p){ location.hash='#/'; return; }
+    const p = state.posts.find(function(x){ return x.gid===gid; }); if (!p){ location.hash='#/'; return; }
     el.home.classList.add('hidden'); el.detail.classList.remove('hidden');
-    const byCat = p.changes.reduce((m,c)=>{ if (!m[c.category]) m[c.category] = []; m[c.category].push(c); return m; },{});
+    var byCat = p.changes.reduce(function(m,c){ if (!m[c.category]) m[c.category] = []; m[c.category].push(c); return m; },{});
     el.detail.innerHTML = '<h2>'+escapeHtml(p.title)+'</h2><p class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Open on Steam</a></p>'+
       '<button id="toggle-raw">Toggle raw text</button><pre id="raw" class="hidden">'+escapeHtml(p.rawText)+'</pre>'+
-      Object.entries(byCat).map(([cat,list])=>'<section><h3>['+escapeHtml(cat)+']</h3>'+list.map(c=>'<div class="change"><div>'+escapeHtml(c.raw)+'</div><div class="chips">'+c.tags.map(chip).join('')+chip(c.changeType,'tag-'+c.changeType)+'</div></div>').join('')+'</section>').join('');
-    document.getElementById('toggle-raw').onclick = ()=>document.getElementById('raw').classList.toggle('hidden');
+      Object.entries(byCat).map(function(entry){ var cat = entry[0], list = entry[1]; return '<section><h3>['+escapeHtml(cat)+']</h3>'+list.map(function(c){ return '<div class="change"><div>'+escapeHtml(c.raw)+'</div><div class="chips">'+c.tags.map(chip).join('')+chip(c.changeType,'tag-'+c.changeType)+'</div></div>'; }).join('')+'</section>'; }).join('');
+    document.getElementById('toggle-raw').onclick = function(){ document.getElementById('raw').classList.toggle('hidden'); };
   }
 
 
@@ -262,22 +262,22 @@ function buildHtml() {
 
   function routeRender(){ const m=location.hash.match(/^#\/post\/(.+)$/); if (m) renderPostDetail(m[1]); else renderHome(); }
   function chip(t,cls=''){ return '<span class="chip '+cls+'">'+escapeHtml(t)+'</span>'; }
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-  function summaryTop(p){ const x=countMap(p.changes.flatMap(c=>[c.primaryEntity,...c.statTags]).filter(Boolean)); return Object.entries(x).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>k+'('+v+')').join(', ') || 'N/A'; }
-  function countMap(arr){ const m={}; arr.forEach(x=>m[x]=(m[x]||0)+1); return m; }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]); }); }
+  function summaryTop(p){ var x=countMap(p.changes.flatMap(function(c){ return [c.primaryEntity].concat(c.statTags); }).filter(Boolean)); return Object.entries(x).sort(function(a,b){ return b[1]-a[1]; }).slice(0,4).map(function(kv){ return kv[0]+'('+kv[1]+')'; }).join(', ') || 'N/A'; }
+  function countMap(arr){ var m={}; arr.forEach(function(x){ m[x]=(m[x]||0)+1; }); return m; }
 
   function populateFilterOptions(){
-    const categories=['',...new Set(state.posts.flatMap(p=>p.categories))];
-    const entities=['',...new Set(state.posts.flatMap(p=>p.changes.flatMap(c=>c.tags)).filter(Boolean))].sort();
-    const stats=['',...new Set(state.posts.flatMap(p=>p.changes.flatMap(c=>c.statTags)))].sort();
+    const categories=[''].concat(Array.from(new Set(state.posts.flatMap(function(p){ return p.categories; }))));
+    const entities=[''].concat(Array.from(new Set(state.posts.flatMap(function(p){ return p.changes.flatMap(function(c){ return c.tags; }); }).filter(Boolean)))).sort();
+    const stats=[''].concat(Array.from(new Set(state.posts.flatMap(function(p){ return p.changes.flatMap(function(c){ return c.statTags; }); })))).sort();
     const types=['','buff','nerf','fix','added','removed','changed','rework','qol','mechanics','unknown'];
     fill(el.category,categories,'All categories'); fill(el.entity,entities,'All entities/tags'); fill(el.stat,stats,'All stats'); fill(el.type,types,'All change types');
   }
-  function fill(select, values, label){ const keep=select.value; select.innerHTML = values.map(v=>'<option value="'+v+'">'+(v||label)+'</option>').join(''); select.value=keep; }
+  function fill(select, values, label){ var keep=select.value; select.innerHTML = values.map(function(v){ return '<option value="'+v+'">'+(v||label)+'</option>'; }).join(''); select.value=keep; }
 
   function injectPostJsonLd(posts){
     const old=document.getElementById('posts-jsonld'); if(old) old.remove();
-    const data = posts.slice(0,20).map(p=>({ '@context':'https://schema.org','@type':'NewsArticle', headline:p.title, datePublished:p.date, url:p.url, about:'Deadlock patch notes'}));
+    const data = posts.slice(0,20).map(function(p){ return { '@context':'https://schema.org','@type':'NewsArticle', headline:p.title, datePublished:p.date, url:p.url, about:'Deadlock patch notes'}; });
     const s=document.createElement('script'); s.id='posts-jsonld'; s.type='application/ld+json'; s.textContent=JSON.stringify(data); document.head.appendChild(s);
   }
 
@@ -289,14 +289,14 @@ function buildHtml() {
       {cat:'General',line:'Base Guardian Bullet Resistance increased from 10% to 20%',expect:{entityType:'objective',stat:'Bullet Resistance',old:'10%',next:'20%'}}
     ];
     console.group('Deadlock parser debug tests');
-    tests.forEach((t,i)=>{ const r=parseChangeLine(t.cat,t.line,i); console.log(i+1, t.line, r); });
+    tests.forEach(function(t,i){ const r=parseChangeLine(t.cat,t.line,i); console.log(i+1, t.line, r); });
     console.groupEnd();
   }
 
   async function processPostsInChunks(items){
     state.fetched = items.length; state.processed=0; setProgress('Fetched '+state.fetched+' posts');
-    const sorted = [...items].sort((a,b)=>b.date-a.date); const parsed=[]; let i=0;
-    return new Promise(resolve=>{
+    const sorted = [].concat(items).sort(function(a,b){ return b.date-a.date; }); const parsed=[]; let i=0;
+    return new Promise(function(resolve){
       function work(deadline){
         while (i<sorted.length && ((deadline && deadline.timeRemaining()>4) || !deadline)) {
           parsed.push(parsePost(sorted[i++])); state.processed=i; setProgress('Fetched '+state.fetched+' posts • Processed '+state.processed+' / '+state.fetched);
@@ -306,7 +306,7 @@ function buildHtml() {
       schedule(work);
     });
   }
-  function schedule(fn){ if ('requestIdleCallback' in window) requestIdleCallback(fn); else setTimeout(()=>fn(null),0); }
+  function schedule(fn){ if ('requestIdleCallback' in window) requestIdleCallback(fn); else setTimeout(function(){ fn(null); },0); }
 
   async function refreshFromSteam(){
     const items = await fetchSteamNews(); if (!items) return;
@@ -317,10 +317,10 @@ function buildHtml() {
 
   function init(){
     const cached = loadCache();
-    if (cached?.posts?.length){ state.posts = cached.posts; state.lastUpdated = cached.lastUpdated; state.filtered=state.posts; populateFilterOptions(); routeRender(); injectPostJsonLd(state.posts); setProgress('Loaded '+state.posts.length+' cached posts • Last updated '+new Date(state.lastUpdated).toLocaleString()); }
+    if (cached && cached.posts && cached.posts.length){ state.posts = cached.posts; state.lastUpdated = cached.lastUpdated; state.filtered=state.posts; populateFilterOptions(); routeRender(); injectPostJsonLd(state.posts); setProgress('Loaded '+state.posts.length+' cached posts • Last updated '+new Date(state.lastUpdated).toLocaleString()); }
     else { setProgress('No cache found yet.'); }
 
-    [el.search, el.category, el.entity, el.stat, el.type].forEach(node=>node.addEventListener('input', applyFilters));
+    [el.search, el.category, el.entity, el.stat, el.type].forEach(function(node){ node.addEventListener('input', applyFilters); });
     el.refresh.addEventListener('click', refreshFromSteam);
     window.addEventListener('hashchange', routeRender);
     if (new URLSearchParams(location.search).get('debug') === '1') runParserTests();
