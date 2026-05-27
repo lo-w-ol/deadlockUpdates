@@ -59,3 +59,18 @@ When the app remains at the initial status text, the inline script is typically 
 - Kept parser logic, filtering behavior, and UI output intentionally unchanged.
 - Left Worker routing/deploy config unchanged.
 - Added this decision-log entry at the end of `AGENTS.md` in chronological order.
+
+## Modularise Client Script and Add Structured Bootstrap Trace Logging
+**Date and time:** 2026-05-27 01:14 UTC
+
+**Summarised context:**
+User reported the app still freezes at "Initializing…" and requested a refactor into multiple files plus richer diagnostics that make console output actionable for remote debugging.
+
+**Summarised reasoning:**
+Splitting the inline script/style into dedicated assets reduces monolithic surface area and makes parse/runtime failures easier to isolate. A structured stage-based logger with session IDs, global error hooks, and a callable trace dump gives deterministic breadcrumbs to identify the exact boot stage where execution fails.
+
+**Summarised changes:**
+- Refactored browser app logic into `app.js` and styles into `styles.css`, served by the Worker at `/app.js` and `/styles.css`.
+- Updated `worker.js` HTML shell to load external assets while preserving existing UI and behavior.
+- Added structured debug instrumentation (`[DeadlockInit]`), per-stage progress logs, `window.error`/`unhandledrejection` hooks, and `window.__deadlockDebug.dump()` trace export.
+- Left parsing/fetch product behavior unchanged beyond diagnostics and modularization.
