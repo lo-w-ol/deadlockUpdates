@@ -308,3 +308,19 @@ Serving `app.js`/`styles.css` via an assets binding removes large embedded strin
 - Reduced refresh KV writes to only the v2 snapshot key path when changed; removed legacy items/meta writes.
 - Updated `app.js` init flow with cache age revalidation guard to avoid automatic API calls when local cache is fresh.
 - Left routes, SEO pages, character pages, static character list, sitemap/robots, cron refresh, and admin refresh endpoint behavior intentionally unchanged.
+
+## Restore Missing Worker Runtime Constants and Precompute Character Alias Maps
+**Date and time:** 2026-05-27 06:22 UTC
+
+**Summarised context:**
+Reviewed the reported Cloudflare Worker 1101 runtime error and re-inspected the latest `worker.js` changes from the bundle-reduction commit, with focus on top-level constants/state and character matching hot paths.
+
+**Summarised reasoning:**
+The previous edit removed embedded assets correctly but also inadvertently dropped required Worker constants/state (`APP_ID`, KV keys, memory snapshot vars), which can throw runtime `ReferenceError` and produce 1101 failures. Character matching also still performed repeated full-list scans in parsing/render helpers, so precomputed alias/slug maps were added to cut repeated per-request CPU.
+
+**Summarised changes:**
+- Restored missing top-level Worker constants and in-memory snapshot state variables required by fetch/refresh/storage flow.
+- Added precomputed `CHARACTER_BY_SLUG` and `CHARACTER_ALIAS_TO_SLUG` maps.
+- Updated `characterBySlug` to use the precomputed slug map first.
+- Updated character data collection and post-related-character rendering to use alias map lookups instead of repeated `DEADLOCK_CHARACTERS.find(...)` scans.
+- Left route structure, SEO endpoints, sitemap, cron refresh, admin refresh auth, and asset-binding strategy unchanged.

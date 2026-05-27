@@ -1,4 +1,14 @@
 const SITE_NAME = 'Deadlock Updates Tracker';
+const APP_ID = 1422450;
+const MAX_ITEMS = 30;
+const NEWS_KEY = 'steam_news_items';
+const NEWS_META_KEY = 'steam_news_meta';
+const NEWS_SNAPSHOT_V2_KEY = 'steam_news_snapshot_v2';
+const MEMORY_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
+let memorySnapshot = null;
+let memorySnapshotExpiresAt = 0;
+let memorySnapshotPromise = null;
+
 // Intentionally static registry for canonical Deadlock character pages.
 // This is the single source of truth for character SEO routes for now and can
 // later be replaced by an API/source-driven registry without changing routes.
@@ -13,6 +23,15 @@ const DEADLOCK_CHARACTERS = [
   { name: "Warden", slug: "warden" }, { name: "Wraith", slug: "wraith" }, { name: "Yamato", slug: "yamato" }
 ];
 
+const CHARACTER_BY_SLUG = new Map(DEADLOCK_CHARACTERS.map(function(c){ return [c.slug, c]; }));
+const CHARACTER_ALIAS_TO_SLUG = (function(){
+  var m = new Map();
+  DEADLOCK_CHARACTERS.forEach(function(c){
+    characterNameSet(c).forEach(function(alias){ if (!m.has(alias)) m.set(alias, c.slug); });
+  });
+  return m;
+})();
+
 function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]); }); }
 function escapeXml(s) { return escapeHtml(s); }
 function truncateText(s, max) { var t = String(s || '').replace(/\s+/g, ' ').trim(); return t.length > max ? t.slice(0, max - 1) + '…' : t; }
@@ -20,7 +39,7 @@ function absoluteUrl(base, path) { return new URL(path, base).toString(); }
 function slugifyName(name) { return String(name || '').toLowerCase().trim().replace(/&/g, ' and ').replace(/['’`]/g, '').replace(/[^a-z0-9\s-]/g, ' ').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, ''); }
 function normalizeName(name) { return String(name || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim(); }
 function characterNameSet(character) { return [character.name].concat(character.aliases || []).map(normalizeName); }
-function characterBySlug(slug) { var norm = slugifyName(slug); return DEADLOCK_CHARACTERS.find(function(c){ return c.slug === norm || slugifyName(c.name) === norm; }) || null; }
+function characterBySlug(slug) { var norm = slugifyName(slug); return CHARACTER_BY_SLUG.get(norm) || DEADLOCK_CHARACTERS.find(function(c){ return slugifyName(c.name) === norm; }) || null; }
 function parseHeroChangesFromPost(post) { var txt = String(post && post.contents || '').replace(/<\s*br\s*\/?\s*>/gi, '\n').replace(/<[^>]+>/g, ' ').replace(/\[\*]/gi, '\n- ').replace(/\[\/?(?:p|list|b|i|u|h[1-6]|quote|code|url(?:=[^\]]+)?)\]/gi, '\n').replace(/\r/g, ''); var lines = txt.split('\n'); var category = 'General'; var out = []; var i; for (i = 0; i < lines.length; i++) { var line = lines[i].replace(/\s+/g, ' ').trim(); if (!line) continue; var sec = line.match(/^\[\s*([^\]]+?)\s*\]$/); if (sec) { category = sec[1].trim(); continue; } var cleaned = line.replace(/^\s*(?:[-•*])\s+/, '').trim(); var m = cleaned.match(/^([^:]{2,60}):\s*(.+)$/); if (/heroes?/i.test(category) && m) { out.push({ category: category, primaryEntity: m[1].trim(), raw: m[2].trim() || cleaned }); } } return out; }
 function semanticClass(type) { return ({ buff:'change-buff', nerf:'change-nerf', mixed:'change-mixed', rework:'change-rework', bugfix:'change-bugfix', neutral:'change-neutral' }[type] || 'change-neutral'); }
 
@@ -75,7 +94,7 @@ async function readStoredNews(env) {
 
 function buildRobots(origin) { return `User-agent: *\nAllow: /\nSitemap: ${absoluteUrl(origin, '/sitemap.xml')}\n`; }
 function buildSitemap(origin, items, lastRefreshedAt) { const now = lastRefreshedAt || new Date().toISOString(); const urls = [{ loc: absoluteUrl(origin, '/'), lastmod: now }, { loc: absoluteUrl(origin, '/characters'), lastmod: now }]; DEADLOCK_CHARACTERS.forEach(function(c){ urls.push({ loc: absoluteUrl(origin, '/characters/' + c.slug), lastmod: now }); }); (items || []).slice(0, 100).forEach(function(item) { if (item && item.gid) urls.push({ loc: absoluteUrl(origin, '/post/' + encodeURIComponent(item.gid)), lastmod: item.date ? new Date(item.date * 1000).toISOString() : now }); }); return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(function(u){ return `  <url><loc>${escapeXml(u.loc)}</loc><lastmod>${escapeXml(u.lastmod)}</lastmod></url>`; }).join('\n')}\n</urlset>`; }
-function collectCharacterData(items) { var map = {}; DEADLOCK_CHARACTERS.forEach(function(c){ map[c.slug] = { character: c, changes: [], latest: null, typeCounts: {}, statCounts: {} }; }); (items || []).forEach(function(post){ var heroChanges = parseHeroChangesFromPost(post); heroChanges.forEach(function(ch){ var matched = DEADLOCK_CHARACTERS.find(function(c){ return characterNameSet(c).indexOf(normalizeName(ch.primaryEntity)) !== -1; }); if (!matched) return; var bucket = map[matched.slug]; var entry = { gid: post.gid, title: post.title, url: post.url, date: post.date ? new Date(post.date * 1000).toISOString() : null, category: ch.category, raw: ch.raw, changeType: /fixed|issue/i.test(ch.raw) ? 'bugfix' : 'neutral', statTags: [] }; bucket.changes.push(entry); if (entry.date && (!bucket.latest || entry.date > bucket.latest)) bucket.latest = entry.date; bucket.typeCounts[entry.changeType] = (bucket.typeCounts[entry.changeType] || 0) + 1; }); }); return map; }
+function collectCharacterData(items) { var map = {}; DEADLOCK_CHARACTERS.forEach(function(c){ map[c.slug] = { character: c, changes: [], latest: null, typeCounts: {}, statCounts: {} }; }); (items || []).forEach(function(post){ var heroChanges = parseHeroChangesFromPost(post); heroChanges.forEach(function(ch){ var matchedSlug = CHARACTER_ALIAS_TO_SLUG.get(normalizeName(ch.primaryEntity)); if (!matchedSlug) return; var bucket = map[matchedSlug]; var entry = { gid: post.gid, title: post.title, url: post.url, date: post.date ? new Date(post.date * 1000).toISOString() : null, category: ch.category, raw: ch.raw, changeType: /fixed|issue/i.test(ch.raw) ? 'bugfix' : 'neutral', statTags: [] }; bucket.changes.push(entry); if (entry.date && (!bucket.latest || entry.date > bucket.latest)) bucket.latest = entry.date; bucket.typeCounts[entry.changeType] = (bucket.typeCounts[entry.changeType] || 0) + 1; }); }); return map; }
 
 
 function buildDerivedSiteData(snapshot) {
@@ -106,7 +125,7 @@ function buildPostHtml(origin, post) {
   const published = post.date ? new Date(post.date * 1000).toISOString() : new Date().toISOString();
   const plain = truncateText(String(post.contents || '').replace(/<[^>]+>/g, ' ').replace(/\[[^\]]+\]/g, ' '), 220);
   const jsonLd = { '@context':'https://schema.org', '@type':'NewsArticle', headline:post.title || 'Deadlock update', datePublished:published, dateModified:published, url:canonical, articleBody:plain, publisher:{ '@type':'Organization', name:SITE_NAME } };
-  var related = Array.from(new Set(parseHeroChangesFromPost(post).map(function(c){ var m = DEADLOCK_CHARACTERS.find(function(ch){ return characterNameSet(ch).indexOf(normalizeName(c.primaryEntity)) !== -1; }); return m ? `<a href="/characters/${m.slug}">${escapeHtml(m.name)}</a>` : ''; }).filter(Boolean))).join(', ');
+  var related = Array.from(new Set(parseHeroChangesFromPost(post).map(function(c){ var slug = CHARACTER_ALIAS_TO_SLUG.get(normalizeName(c.primaryEntity)); var m = slug ? CHARACTER_BY_SLUG.get(slug) : null; return m ? `<a href="/characters/${m.slug}">${escapeHtml(m.name)}</a>` : ''; }).filter(Boolean))).join(', ');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>${escapeHtml(post.title || 'Deadlock update')} | ${SITE_NAME}</title><meta name="description" content="${escapeHtml(plain || 'Deadlock patch notes update from Steam news.')}"/><link rel="canonical" href="${canonical}"/><meta name="robots" content="index,follow"/><meta property="og:type" content="article"/><meta property="og:site_name" content="${SITE_NAME}"/><meta property="og:title" content="${escapeHtml(post.title || 'Deadlock update')}"/><meta property="og:description" content="${escapeHtml(plain)}"/><meta property="og:url" content="${canonical}"/><meta name="twitter:card" content="summary"/><meta name="twitter:title" content="${escapeHtml(post.title || 'Deadlock update')}"/><meta name="twitter:description" content="${escapeHtml(plain)}"/><link rel="stylesheet" href="/styles.css"/><script type="application/ld+json">${JSON.stringify(jsonLd)}</script></head><body>${renderFloatingHeader(origin, post)}<main class="page-main" style="max-width: 900px;"><article class="panel"><h1>${escapeHtml(post.title || 'Deadlock update')}</h1><p class="muted">Published: ${escapeHtml(published)} • <a href="${escapeHtml(post.url || '#')}" target="_blank" rel="noopener">Original Steam post</a></p><p>${escapeHtml(plain)}</p>${related ? `<p class="muted">Related characters: ${related}</p>` : ''}<p><a href="/">Back to Deadlock updates homepage</a> • <a href="/characters">Browse all characters</a></p></article></main></body></html>`;
 }
 function buildCharactersIndexHtml(origin, map, meta, latestPost) { var canonical = absoluteUrl(origin, '/characters'); var cards = DEADLOCK_CHARACTERS.map(function(c){ var d = map[c.slug]; var topTypes = Object.entries(d.typeCounts).sort(function(a,b){ return b[1]-a[1]; }).slice(0,3).map(function(x){ return x[0]; }).join(', ') || 'None yet'; return `<article class="card"><h2><a href="/characters/${c.slug}">${escapeHtml(c.name)}</a></h2><p class="muted">Parsed changes: ${d.changes.length}</p><p class="muted">Latest patch: ${d.latest ? escapeHtml(d.latest.slice(0,10)) : 'No detected changes yet'}</p><p class="muted">Common types: ${escapeHtml(topTypes)}</p>${d.changes.length ? '' : '<p class="muted">No parsed patch changes found for this character yet.</p>'}</article>`; }).join(''); return `<!doctype html><html><head><meta charset="utf-8"/><title>Deadlock Characters Patch History</title><meta name="description" content="Browse Deadlock character patch-note history pages with buffs, nerfs, bug fixes, and change summaries."/><link rel="canonical" href="${canonical}"/><meta property="og:title" content="Deadlock Characters Patch History"/><meta property="og:description" content="Browse every tracked Deadlock character and open dedicated patch history pages."/><meta property="og:url" content="${canonical}"/><meta name="twitter:card" content="summary"/><link rel="stylesheet" href="/styles.css"/></head><body>${renderFloatingHeader(origin, latestPost)}<main class="page-main"><article class="panel"><h1>Deadlock Characters</h1><p><a href="/">Back to homepage</a></p><p class="muted">Last server refresh: ${escapeHtml((meta && meta.lastRefreshedAt) || 'unknown')}.</p></article><section class="list">${cards}</section></main></body></html>`; }
