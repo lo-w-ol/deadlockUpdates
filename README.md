@@ -18,9 +18,10 @@ wrangler secret put ADMIN_REFRESH_TOKEN
 ## SEO and indexing improvements
 
 - Added crawl-friendly server-rendered HTML for the homepage and `/post/:gid` pages, including visible intro content and discoverable internal links to recent updates.
+- Added crawl-friendly server-rendered character pages at `/character/:name/` that list all hero-specific patch lines found in cached posts.
 - Added SEO metadata: improved titles/descriptions, canonical URLs, Open Graph tags, and Twitter card tags on home and post pages.
 - Added `robots.txt` at `/robots.txt` allowing crawling and referencing the sitemap.
-- Added sitemap generation at `/sitemap.xml` with absolute URLs for the homepage and cached post pages, including `lastmod` timestamps.
+- Added sitemap generation at `/sitemap.xml` with absolute URLs for homepage, cached post pages, and generated character pages, including `lastmod` timestamps.
 - Added basic JSON-LD (`WebSite` for homepage and `NewsArticle` for post pages).
 
 ### Current limitations / future improvements

@@ -220,3 +220,20 @@ Search engines index static, semantic HTML more reliably than JS-only shells. Ad
 
 **Remaining TODOs:**
 - Consider adding persistent OG image support for richer social snippets if a stable image source is introduced.
+
+## Add Indexable Character Landing Pages and Sitemap Entries
+**Date and time:** 2026-05-27 04:02 UTC
+
+**Summarised context:**
+Reviewed the existing Worker SEO routes for `/`, `/post/:gid`, `/robots.txt`, and `/sitemap.xml`, plus current KV-backed news data shape, to determine how to generate crawlable character-focused pages from cached Steam patch content.
+
+**Summarised reasoning:**
+A dedicated server-rendered route per character provides stable, crawlable URLs that can rank independently and satisfy the requirement for `/.../name/` pages without relying on client-side filtering. Building these pages from KV data during request time keeps them aligned with the daily scheduled refresh, while including them in sitemap output ensures discovery by crawlers.
+
+**Summarised changes:**
+- Added server-side character extraction from hero-category lines in cached post content, with normalized slug generation.
+- Added indexable character route `/character/:name/` (trailing slash supported) that renders all matched change lines for that character with canonical/OG/Twitter/JSON-LD metadata.
+- Updated homepage server-rendered intro section to include crawlable links to generated character pages.
+- Updated sitemap generation to include all discovered character page URLs with `lastmod` based on each character's most recent matching change date.
+- Updated README SEO section to document the new character pages and sitemap coverage.
+- Left Worker API cache flow, scheduled refresh mechanics, and admin refresh auth unchanged.
