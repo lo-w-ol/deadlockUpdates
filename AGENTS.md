@@ -44,3 +44,18 @@ Some browser/parser combinations used by clients can still fail on `??=` in inli
 - Replaced `??=` usage in `renderPostDetail` category grouping reducer with explicit array initialisation logic.
 - Kept post parsing, filtering, UI layout, and diff rendering behavior unchanged.
 - Added this decision-log entry at the end of `AGENTS.md` in chronological order.
+
+## Broaden Browser Compatibility by Removing Arrow/Optional Syntax in Inline App Script
+**Date and time:** 2026-05-27 01:08 UTC
+
+**Summarised context:**
+Reviewed the latest user screenshot showing the UI frozen at "Initializing..." and re-inspected `worker.js` inline browser script for any remaining modern JavaScript syntax that could still fail parsing in stricter/older browser engines.
+
+**Summarised reasoning:**
+When the app remains at the initial status text, the inline script is typically failing before `init()` runs. Remaining ES2020+ and arrow-function syntax can trigger parse-time failures in some browser contexts, so replacing those constructs with broadly compatible function expressions and explicit null checks is the safest way to restore execution.
+
+**Summarised changes:**
+- Replaced remaining optional chaining and arrow-function expressions in the inline app script with compatibility-safe equivalents.
+- Kept parser logic, filtering behavior, and UI output intentionally unchanged.
+- Left Worker routing/deploy config unchanged.
+- Added this decision-log entry at the end of `AGENTS.md` in chronological order.
