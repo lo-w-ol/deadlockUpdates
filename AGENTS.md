@@ -274,3 +274,19 @@ The Worker 1101 exception was caused by missing top-level declarations for new s
 - Added module-level cache state variables: `memorySnapshot`, `memorySnapshotExpiresAt`, and `memorySnapshotPromise`.
 - Re-checked `getCachedPostsSnapshot()`, `readStoredNews()`, and `refreshStoredNews()` for additional undefined identifiers and left logic unchanged.
 - Left route handling, API behavior, and SEO page/rendering behavior intentionally unchanged.
+
+## Add Global Floating Navigation Header and Wide Home Two-Column Desktop Layout
+**Date and time:** 2026-05-27 04:47 UTC
+
+**Summarised context:**
+Reviewed current Worker server-rendered routes (`/`, `/characters`, `/characters/:slug`, `/post/:gid`), existing CSS layout constraints, and recent KV optimisation logic to ensure UX/layout changes would not reintroduce unnecessary KV reads.
+
+**Summarised reasoning:**
+The app needed crawlable, consistent top-level navigation and better desktop information density. A reusable server-rendered header helper with standard anchors satisfies crawlability/accessibility, while a wide feed-first homepage grid with stacked sidebar panels improves usability without changing API/KV behavior.
+
+**Summarised changes:**
+- Added reusable server-rendered floating header helper and integrated it across homepage, post pages, characters index/detail pages, and 404 character pages.
+- Added primary nav links for Home, Characters, and Latest Patch (graceful fallback when no latest post exists).
+- Reworked homepage HTML shell into a feed-dominant two-column layout with stacked right sidebar panels (intro + filters).
+- Updated CSS to support sticky header styling, wrapping navigation on small screens, wider desktop layout usage, and right-edge sidebar alignment.
+- Kept KV optimisation behavior intact (no static-route KV reads added, no global top-of-request snapshot read reintroduced).
