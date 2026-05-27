@@ -290,3 +290,37 @@ The app needed crawlable, consistent top-level navigation and better desktop inf
 - Reworked homepage HTML shell into a feed-dominant two-column layout with stacked right sidebar panels (intro + filters).
 - Updated CSS to support sticky header styling, wrapping navigation on small screens, wider desktop layout usage, and right-edge sidebar alignment.
 - Kept KV optimisation behavior intact (no static-route KV reads added, no global top-of-request snapshot read reintroduced).
+
+## Worker Bundle and Runtime Usage Reduction via Asset Binding and Derived Snapshot Reuse
+**Date and time:** 2026-05-27 06:10 UTC
+
+**Summarised context:**
+Reviewed user goals to reduce overall Worker usage, identified duplicated client asset embedding in `worker.js`, repeated character derivation work on character/post routes, repeated browser API fetch behavior in `app.js`, and redundant legacy KV writes during refresh.
+
+**Summarised reasoning:**
+Serving `app.js`/`styles.css` via an assets binding removes large embedded string constants from Worker source and shrinks script size. Reusing derived snapshot structures per route avoids repeated scans/lookups during a single request path. Stopping legacy-key writes reduces KV write operations while keeping v2 snapshot reads intact. Client-side freshness gating reduces routine browser-triggered `/api/posts` calls.
+
+**Summarised changes:**
+- Removed embedded static asset payload section from `worker.js` so Worker code no longer contains giant inlined client JS/CSS string constants.
+- Switched `/app.js` and `/styles.css` handling to `env.ASSETS.fetch(request)` fallback route handling.
+- Added `[assets]` binding in `wrangler.toml` with include list for `app.js` and `styles.css`.
+- Added `buildDerivedSiteData(snapshot)` helper and reused it on character/post routes for shared latest-post/post-map/character-data derivation.
+- Reduced refresh KV writes to only the v2 snapshot key path when changed; removed legacy items/meta writes.
+- Updated `app.js` init flow with cache age revalidation guard to avoid automatic API calls when local cache is fresh.
+- Left routes, SEO pages, character pages, static character list, sitemap/robots, cron refresh, and admin refresh endpoint behavior intentionally unchanged.
+
+## Restore Missing Worker Runtime Constants and Precompute Character Alias Maps
+**Date and time:** 2026-05-27 06:22 UTC
+
+**Summarised context:**
+Reviewed the reported Cloudflare Worker 1101 runtime error and re-inspected the latest `worker.js` changes from the bundle-reduction commit, with focus on top-level constants/state and character matching hot paths.
+
+**Summarised reasoning:**
+The previous edit removed embedded assets correctly but also inadvertently dropped required Worker constants/state (`APP_ID`, KV keys, memory snapshot vars), which can throw runtime `ReferenceError` and produce 1101 failures. Character matching also still performed repeated full-list scans in parsing/render helpers, so precomputed alias/slug maps were added to cut repeated per-request CPU.
+
+**Summarised changes:**
+- Restored missing top-level Worker constants and in-memory snapshot state variables required by fetch/refresh/storage flow.
+- Added precomputed `CHARACTER_BY_SLUG` and `CHARACTER_ALIAS_TO_SLUG` maps.
+- Updated `characterBySlug` to use the precomputed slug map first.
+- Updated character data collection and post-related-character rendering to use alias map lookups instead of repeated `DEADLOCK_CHARACTERS.find(...)` scans.
+- Left route structure, SEO endpoints, sitemap, cron refresh, admin refresh auth, and asset-binding strategy unchanged.

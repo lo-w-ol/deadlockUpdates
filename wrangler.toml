@@ -10,3 +10,8 @@ crons = ["0 3 * * *"]
 binding = "DEADLOCK_KV"
 id = "95030b91aabe47278c426f1ea48fd5ae"
 preview_id = "95030b91aabe47278c426f1ea48fd5ae"
+
+[assets]
+directory = "."
+binding = "ASSETS"
+include = ["app.js", "styles.css"]
