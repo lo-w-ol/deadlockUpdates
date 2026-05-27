@@ -1,7 +1,7 @@
 (function() {
   var APP_ID = 1422450;
   var CACHE_KEY = 'deadlock-news-parser-v1';
-  var STEAM_URL = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=1422450&count=100&maxlength=0&format=json&feeds=steam_community_announcements';
+  var API_POSTS_URL = '/api/posts';
   var state = { posts: [], filtered: [], lastUpdated: null, fetched: 0, processed: 0 };
 
   var LOG_VERSION = '2026-05-27a';
@@ -47,22 +47,30 @@
   function loadCache(){ try { return JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (e) { log('cache.load_error', { message: e.message }); return null; } }
 
   async function fetchSteamNews(){
-    log('steam.fetch_start', { url: STEAM_URL });
+    log('steam.fetch_start', { url: API_POSTS_URL });
     try {
-      var res = await fetch(STEAM_URL, { mode:'cors' });
+      var res = await fetch(API_POSTS_URL, { headers: { 'accept': 'application/json' } });
       log('steam.fetch_response', { ok: res.ok, status: res.status });
-      if (!res.ok) throw new Error('Steam HTTP ' + res.status);
+      if (!res.ok) throw new Error('API HTTP ' + res.status);
       var json = await res.json();
-      var items = (json && json.appnews && json.appnews.newsitems) || [];
-      log('steam.fetch_success', { count: items.length });
+      var items = (json && json.items) || [];
+      var source = (json && json.source) || 'unknown';
+      log('steam.fetch_success', { count: items.length, source: source });
+      if (el.cors) {
+        el.cors.classList.remove('hidden');
+        el.cors.textContent = 'Data source: ' + source + '. Last server refresh: ' + ((json && json.lastRefreshedAt) || 'unknown') + '.';
+      }
       return items;
     } catch (err) {
-      el.cors.classList.remove('hidden');
-      el.cors.textContent = 'Direct browser access to Steam may be blocked by CORS/network policy. This static Worker intentionally has no proxy/API layer. Add a dedicated proxy/API if you need reliable cross-origin access.';
+      if (el.cors) {
+        el.cors.classList.remove('hidden');
+        el.cors.textContent = 'Server API fetch failed. Try again shortly.';
+      }
       log('steam.fetch_error', { message: err.message, stack: err.stack ? String(err.stack).slice(0, 300) : null });
       return null;
     }
   }
+
 
   function normalizeSteamContent(content){ var txt = document.createElement('textarea'); txt.innerHTML = content || ''; var s = txt.value; s = s.replace(/<\s*br\s*\/?\s*>/gi,'\n').replace(/<\/?p[^>]*>/gi,'\n').replace(/<\/?div[^>]*>/gi,'\n').replace(/<\/?li[^>]*>/gi,'\n- '); s = s.replace(/<[^>]+>/g,' '); s = s.replace(/\r/g,'').replace(/\n{3,}/g,'\n\n'); return s.split('\n').map(function(x){ return x.trim(); }).filter(Boolean).join('\n'); }
   function parseSectionsAndBullets(normalized){ var lines = normalized.split('\n'); var currentCategory = 'General'; var out=[]; for (var i = 0; i < lines.length; i++) { var line = lines[i]; var sec = line.match(/^\s*\[\s*([^\]]+?)\s*\]\s*$/); if (sec){ currentCategory = sec[1].trim(); continue; } var bullet = line.match(/^\s*[-•]\s+(.+)$/); if (bullet){ out.push({ category: currentCategory, text: bullet[1].trim() }); } } return out; }
