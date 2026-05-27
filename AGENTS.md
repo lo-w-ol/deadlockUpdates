@@ -156,3 +156,19 @@ Some Steam announcements are not consistently formatted with `-`/`•` bullets o
 - Added heading detection for common category-only lines so category context is preserved when present.
 - Synced the same parser update into the Worker-embedded `APP_JS` bundle.
 - Left API routes, KV refresh behavior, and filter UI structure unchanged.
+
+## Parse Steam BBCode Paragraph Tags into Proper Diff Lines
+**Date and time:** 2026-05-27 02:34 UTC
+
+**Summarised context:**
+Reviewed the latest user report and screenshot showing `Parsed changes: 1` with a single long line still containing Steam BBCode markers like `[p]`/`[/p]`/`[b]`, and inspected current `normalizeSteamContent` logic in `app.js` and the Worker-embedded `APP_JS` bundle in `worker.js`.
+
+**Summarised reasoning:**
+The parser fallback correctly captures non-empty lines, but Steam posts that arrive with BBCode paragraph/list tags are not being normalized into newline-separated bullet lines before parsing. Converting those BBCode tags to line breaks (and stripping styling tags) ensures each gameplay change becomes an individual parsed line and restores category diff readability.
+
+**Summarised changes:**
+- Updated client normalization to translate Steam BBCode structure tags (`[p]`, `[/p]`, `[list]`, `[\*]`) into newline/bullet separators before section parsing.
+- Stripped common BBCode formatting tags (`[b]`, `[i]`, `[u]`, headings, quote/code/url wrappers) during normalization so rendered diff text is clean.
+- Normalized line whitespace before final join to avoid merged or malformed output lines.
+- Synced the same normalization update into the Worker-embedded `APP_JS` bundle in `worker.js` so `/app.js` served by the Worker matches the standalone source.
+- Left API routes, KV refresh behavior, and filter behavior unchanged.
