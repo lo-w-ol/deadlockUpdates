@@ -18,13 +18,77 @@ async function refreshStoredNews(env, source) { const items = await fetchSteamFr
 async function readStoredNews(env) { const [rawItems, rawMeta] = await Promise.all([env.DEADLOCK_KV.get(NEWS_KEY), env.DEADLOCK_KV.get(NEWS_META_KEY)]); return { items: rawItems ? JSON.parse(rawItems) : null, meta: rawMeta ? JSON.parse(rawMeta) : null }; }
 
 function buildRobots(origin) { return `User-agent: *\nAllow: /\nSitemap: ${absoluteUrl(origin, '/sitemap.xml')}\n`; }
-function buildSitemap(origin, items, lastRefreshedAt) { const urls = [{ loc: absoluteUrl(origin, '/'), lastmod: lastRefreshedAt || new Date().toISOString() }]; (items || []).slice(0, 100).forEach(function(item) { if (item && item.gid) urls.push({ loc: absoluteUrl(origin, '/post/' + encodeURIComponent(item.gid)), lastmod: item.date ? new Date(item.date * 1000).toISOString() : (lastRefreshedAt || new Date().toISOString()) }); }); return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(function(u){ return `  <url><loc>${escapeXml(u.loc)}</loc><lastmod>${escapeXml(u.lastmod)}</lastmod></url>`; }).join('\n')}\n</urlset>`; }
+function normalizeSlug(text) { return String(text || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+function stripTagsToText(content) { return String(content || '').replace(/<\s*br\s*\/?\s*>/gi, '\n').replace(/<\/?(?:p|div|li)[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' ').replace(/\r/g, ''); }
+function extractCharacterChanges(items) {
+  const bySlug = {};
+  (items || []).forEach(function(post) {
+    const lines = stripTagsToText(post && post.contents).split('\n');
+    var currentCategory = 'General';
+    lines.forEach(function(rawLine) {
+      const line = String(rawLine || '').replace(/\s+/g, ' ').trim();
+      if (!line) return;
+      const sec = line.match(/^\[\s*([^\]]+?)\s*\]$/);
+      if (sec) {
+        currentCategory = sec[1].trim();
+        return;
+      }
+      if (!/heroes?/i.test(currentCategory)) return;
+      const heroMatch = line.match(/^(?:[-•*]\s*)?([^:]{2,60}):\s*(.+)$/);
+      if (!heroMatch) return;
+      const name = heroMatch[1].trim();
+      const change = heroMatch[2].trim();
+      const slug = normalizeSlug(name);
+      if (!slug) return;
+      if (!bySlug[slug]) bySlug[slug] = { slug, name, changes: [] };
+      bySlug[slug].changes.push({
+        gid: post.gid,
+        title: post.title || 'Deadlock update',
+        date: post.date || 0,
+        text: change,
+        url: post.url || '#'
+      });
+    });
+  });
+  return Object.keys(bySlug).map(function(slug) {
+    const bucket = bySlug[slug];
+    bucket.changes.sort(function(a, b) { return b.date - a.date; });
+    return bucket;
+  }).sort(function(a, b) { return b.changes.length - a.changes.length; });
+}
+function buildSitemap(origin, items, lastRefreshedAt) {
+  const urls = [{ loc: absoluteUrl(origin, '/'), lastmod: lastRefreshedAt || new Date().toISOString() }];
+  (items || []).slice(0, 100).forEach(function(item) {
+    if (item && item.gid) urls.push({ loc: absoluteUrl(origin, '/post/' + encodeURIComponent(item.gid)), lastmod: item.date ? new Date(item.date * 1000).toISOString() : (lastRefreshedAt || new Date().toISOString()) });
+  });
+  extractCharacterChanges(items).forEach(function(character) {
+    const newest = character.changes[0];
+    urls.push({ loc: absoluteUrl(origin, '/character/' + encodeURIComponent(character.slug) + '/'), lastmod: newest && newest.date ? new Date(newest.date * 1000).toISOString() : (lastRefreshedAt || new Date().toISOString()) });
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(function(u){ return `  <url><loc>${escapeXml(u.loc)}</loc><lastmod>${escapeXml(u.lastmod)}</lastmod></url>`; }).join('\n')}\n</urlset>`;
+}
 
 function buildHtml(origin, items, meta) {
   const canonical = absoluteUrl(origin, '/');
   const list = (items || []).slice(0, 15).map(function(p){ const dt = p.date ? new Date(p.date * 1000).toISOString().slice(0, 10) : 'Recent'; return `<li><a href="/post/${encodeURIComponent(p.gid)}">${escapeHtml(p.title || 'Deadlock patch update')}</a> <span class="muted">(${dt})</span></li>`; }).join('');
+  const characterLinks = extractCharacterChanges(items).slice(0, 20).map(function(character) {
+    return `<li><a href="/character/${encodeURIComponent(character.slug)}/">${escapeHtml(character.name)}</a> <span class="muted">(${character.changes.length} changes)</span></li>`;
+  }).join('');
   const jsonLd = { '@context':'https://schema.org', '@type':'WebSite', name:SITE_NAME, url:canonical, description:'Deadlock updates, patch notes, hero changes, item changes, buffs, nerfs, bug fixes, and balance changes from Steam news.' };
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>${SITE_NAME} | Deadlock Patch Notes & Steam News</title><meta name="description" content="Track Deadlock updates with searchable patch notes from Steam news, including hero changes, item changes, buffs, nerfs, bug fixes, and balance changes." /><link rel="canonical" href="${canonical}" /><meta name="robots" content="index,follow" /><meta property="og:type" content="website" /><meta property="og:site_name" content="${SITE_NAME}" /><meta property="og:title" content="${SITE_NAME} | Deadlock Patch Notes & Steam News" /><meta property="og:description" content="Follow Deadlock patch notes and balance updates from Steam news in one searchable tracker." /><meta property="og:url" content="${canonical}" /><meta name="twitter:card" content="summary" /><meta name="twitter:title" content="${SITE_NAME} | Deadlock Patch Notes & Steam News" /><meta name="twitter:description" content="Search Deadlock Steam patch notes for hero changes, item changes, buffs, nerfs, and bug fixes." /><link rel="stylesheet" href="/styles.css" /><script type="application/ld+json">${JSON.stringify(jsonLd)}</script></head><body><header><h1>${SITE_NAME}</h1><div class="muted">Steam app ${APP_ID} • Worker API cache + browser parser</div><div id="progress" class="muted">Initializing…</div></header><main><section class="panel intro"><h2>Latest Deadlock updates and patch notes</h2><p>This site tracks recent Deadlock Steam news and organizes patch notes by heroes, items, buffs, nerfs, bug fixes, and balance changes.</p><nav aria-label="Recent update pages"><h3>Recent update pages</h3><ul class="crawl-list">${list || '<li>No recent updates cached yet. Use the refresh button below.</li>'}</ul></nav><p class="muted">Last server refresh: ${escapeHtml((meta && meta.lastRefreshedAt) || 'unknown')}.</p></section><div class="grid"><aside class="panel"><h2>Filters</h2><div class="row"><label for="search">Search</label><input id="search" placeholder="Search title/body/tags" style="width:100%" /></div><div class="row"><label for="category">Category</label><select id="category"></select></div><div class="row"><label for="entity">Entity/Tag</label><select id="entity"></select></div><div class="row"><label for="stat">Stat</label><select id="stat"></select></div><div class="row"><label for="type">Type</label><select id="type"></select></div><div class="row"><button id="refresh" aria-label="Refresh cached patch notes">Refresh posts</button></div><p id="cors-msg" class="muted hidden"></p></aside><section><h2>Parsed update feed</h2><div id="home-view" class="list"></div><article id="detail-view" class="panel hidden"></article></section></div></main><footer class="muted" style="padding:1rem; text-align:center;">Source: Steam announcements. This fan-made tracker is not affiliated with Valve.</footer><noscript><p style="padding:1rem">JavaScript is disabled. You can still browse update pages from the list above.</p></noscript><script src="/app.js"></script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>${SITE_NAME} | Deadlock Patch Notes & Steam News</title><meta name="description" content="Track Deadlock updates with searchable patch notes from Steam news, including hero changes, item changes, buffs, nerfs, bug fixes, and balance changes." /><link rel="canonical" href="${canonical}" /><meta name="robots" content="index,follow" /><meta property="og:type" content="website" /><meta property="og:site_name" content="${SITE_NAME}" /><meta property="og:title" content="${SITE_NAME} | Deadlock Patch Notes & Steam News" /><meta property="og:description" content="Follow Deadlock patch notes and balance updates from Steam news in one searchable tracker." /><meta property="og:url" content="${canonical}" /><meta name="twitter:card" content="summary" /><meta name="twitter:title" content="${SITE_NAME} | Deadlock Patch Notes & Steam News" /><meta name="twitter:description" content="Search Deadlock Steam patch notes for hero changes, item changes, buffs, nerfs, and bug fixes." /><link rel="stylesheet" href="/styles.css" /><script type="application/ld+json">${JSON.stringify(jsonLd)}</script></head><body><header><h1>${SITE_NAME}</h1><div class="muted">Steam app ${APP_ID} • Worker API cache + browser parser</div><div id="progress" class="muted">Initializing…</div></header><main><section class="panel intro"><h2>Latest Deadlock updates and patch notes</h2><p>This site tracks recent Deadlock Steam news and organizes patch notes by heroes, items, buffs, nerfs, bug fixes, and balance changes.</p><nav aria-label="Recent update pages"><h3>Recent update pages</h3><ul class="crawl-list">${list || '<li>No recent updates cached yet. Use the refresh button below.</li>'}</ul></nav><nav aria-label="Character pages"><h3>Character pages</h3><ul class="crawl-list">${characterLinks || '<li>Character pages will appear after hero-tagged updates are cached.</li>'}</ul></nav><p class="muted">Last server refresh: ${escapeHtml((meta && meta.lastRefreshedAt) || 'unknown')}.</p></section><div class="grid"><aside class="panel"><h2>Filters</h2><div class="row"><label for="search">Search</label><input id="search" placeholder="Search title/body/tags" style="width:100%" /></div><div class="row"><label for="category">Category</label><select id="category"></select></div><div class="row"><label for="entity">Entity/Tag</label><select id="entity"></select></div><div class="row"><label for="stat">Stat</label><select id="stat"></select></div><div class="row"><label for="type">Type</label><select id="type"></select></div><div class="row"><button id="refresh" aria-label="Refresh cached patch notes">Refresh posts</button></div><p id="cors-msg" class="muted hidden"></p></aside><section><h2>Parsed update feed</h2><div id="home-view" class="list"></div><article id="detail-view" class="panel hidden"></article></section></div></main><footer class="muted" style="padding:1rem; text-align:center;">Source: Steam announcements. This fan-made tracker is not affiliated with Valve.</footer><noscript><p style="padding:1rem">JavaScript is disabled. You can still browse update pages from the list above.</p></noscript><script src="/app.js"></script></body></html>`;
+}
+function buildCharacterPageHtml(origin, character, meta) {
+  const path = '/character/' + encodeURIComponent(character.slug) + '/';
+  const canonical = absoluteUrl(origin, path);
+  const newest = character.changes[0];
+  const changedAt = newest && newest.date ? new Date(newest.date * 1000).toISOString() : ((meta && meta.lastRefreshedAt) || new Date().toISOString());
+  const description = truncateText('Track all patch-note lines for ' + character.name + ' from Deadlock Steam updates, grouped chronologically.', 160);
+  const rows = character.changes.map(function(change) {
+    const dt = change.date ? new Date(change.date * 1000).toISOString().slice(0, 10) : 'Recent';
+    return `<li><strong>${escapeHtml(dt)}</strong> — ${escapeHtml(change.text)} <span class="muted">(<a href="/post/${encodeURIComponent(change.gid)}">local post</a> • <a href="${escapeHtml(change.url)}" target="_blank" rel="noopener">steam</a>)</span></li>`;
+  }).join('');
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: `${character.name} patch changes`, url: canonical, dateModified: changedAt, about: `Deadlock character ${character.name} patch notes` };
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>${escapeHtml(character.name)} Patch Notes | ${SITE_NAME}</title><meta name="description" content="${escapeHtml(description)}"/><link rel="canonical" href="${canonical}"/><meta name="robots" content="index,follow"/><meta property="og:type" content="website"/><meta property="og:site_name" content="${SITE_NAME}"/><meta property="og:title" content="${escapeHtml(character.name)} Patch Notes | ${SITE_NAME}"/><meta property="og:description" content="${escapeHtml(description)}"/><meta property="og:url" content="${canonical}"/><meta name="twitter:card" content="summary"/><meta name="twitter:title" content="${escapeHtml(character.name)} Patch Notes | ${SITE_NAME}"/><meta name="twitter:description" content="${escapeHtml(description)}"/><link rel="stylesheet" href="/styles.css"/><script type="application/ld+json">${JSON.stringify(jsonLd)}</script></head><body><main style="max-width: 900px;"><article class="panel"><h1>${escapeHtml(character.name)} patch-note changes</h1><p class="muted">Indexed from Worker KV cache. Last refresh: ${escapeHtml((meta && meta.lastRefreshedAt) || 'unknown')}.</p><ol class="crawl-list">${rows}</ol><p><a href="/">Back to Deadlock updates homepage</a></p></article></main></body></html>`;
 }
 
 function buildPostHtml(origin, post) {
@@ -56,6 +120,12 @@ export default {
       const post = (cache.items || []).find(function(item){ return String(item.gid) === gid; });
       if (!post) return new Response('Post not found', { status: 404 });
       return new Response(buildPostHtml(url.origin, post), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+    if (url.pathname.startsWith('/character/')) {
+      const slug = normalizeSlug(decodeURIComponent(url.pathname.slice('/character/'.length)).replace(/\/+$/, ''));
+      const character = extractCharacterChanges(cache.items).find(function(entry){ return entry.slug === slug; });
+      if (!character) return new Response('Character not found', { status: 404 });
+      return new Response(buildCharacterPageHtml(url.origin, character, cache.meta), { headers: { 'content-type': 'text/html; charset=utf-8' } });
     }
     if (url.pathname === '/admin/refresh') {
       const auth = request.headers.get('authorization') || '';
