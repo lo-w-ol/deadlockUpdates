@@ -1,4 +1,4 @@
-:root { color-scheme: dark; --bg:#0b1020; --card:#121a31; --muted:#98a2b3; --text:#e5e7eb; --accent:#60a5fa; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
+:root { color-scheme: dark; --bg:#0b1020; --card:#121a31; --muted:#98a2b3; --text:#e5e7eb; --accent:#60a5fa; }
 * { box-sizing: border-box; }
 body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:linear-gradient(180deg,#0b1020,#0f172a); color:var(--text); }
 a { color: var(--accent); }
@@ -13,20 +13,24 @@ button { cursor:pointer; }
 .muted { color:var(--muted); font-size:.9rem; }
 .chips { display:flex; gap:.35rem; flex-wrap:wrap; }
 .chip { padding:.2rem .45rem; border-radius:999px; border:1px solid #345; font-size:.75rem; color:#cde; }
-.card h3 { margin:.2rem 0 .35rem 0; }
 .hidden { display:none; }
 .change { border-top:1px dashed #334; padding:.5rem 0; }
 .diff-list { margin-top:.65rem; border:1px solid #2a375f; border-radius:10px; overflow:hidden; }
 .diff-line { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding:.4rem .55rem; border-top:1px solid #25304f; white-space:pre-wrap; }
 .diff-line:first-child { border-top:none; }
-.diff-buff { background:#0e2a1b; color:#86efac; }
-.diff-nerf { background:#331313; color:#fca5a5; }
-.diff-change { background:#3a2b10; color:#fde68a; }
-.diff-other { background:#17213d; color:#cbd5e1; }
+.change-buff { background:#0e2a1b; color:#86efac; }
+.change-nerf { background:#331313; color:#fca5a5; }
+.change-rework { background:#3a2b10; color:#fde68a; }
+.change-mixed { background:#2b1f47; color:#d8b4fe; }
+.change-bugfix { background:#17263f; color:#93c5fd; }
+.change-neutral { background:#1f2937; color:#cbd5e1; }
 .tag-buff { border-color:#14532d; color:#86efac; }
 .tag-nerf { border-color:#7f1d1d; color:#fca5a5; }
-.tag-fix,.tag-qol,.tag-mechanics { border-color:#4b5563; color:#d1d5db; }
-@media (max-width: 900px){ .grid{ grid-template-columns:1fr; } header{ position:static; } }
+.tag-mixed { border-color:#6d28d9; color:#d8b4fe; }
+.tag-rework { border-color:#a16207; color:#fde68a; }
+.tag-bugfix { border-color:#1d4ed8; color:#93c5fd; }
+.tag-neutral { border-color:#4b5563; color:#d1d5db; }
 .patch-category { margin-top: .8rem; }
 .patch-category h4 { margin: .2rem 0 .45rem 0; color: #cbd5e1; }
 .patch-divider { height: 1px; background: linear-gradient(90deg, transparent, #3b4a72, transparent); margin: .8rem 0 1.1rem; }
+@media (max-width: 900px){ .grid{ grid-template-columns:1fr; } header{ position:static; } }
