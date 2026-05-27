@@ -29,3 +29,18 @@ The app could stall at "Initializing…" because a syntax error prevents script 
 - Added color classes for diff rows: green buffs, red nerfs, yellow changes, and neutral blue-gray fallback.
 - Added `renderDiffLine` and `diffKind` helpers to map parsed `changeType` values into display categories.
 - Left fetch/parser behavior and data model unchanged.
+
+
+## Replace Nullish Assignment in Category Reducer for Browser Compatibility
+**Date and time:** 2026-05-27 01:04 UTC
+
+**Summarised context:**
+Reviewed the new runtime report `Uncaught SyntaxError: Unexpected token '>' (at (index):110)` and re-inspected inline script syntax in `worker.js`, especially modern assignment operators inside arrow-function reducers in detail rendering.
+
+**Summarised reasoning:**
+Some browser/parser combinations used by clients can still fail on `??=` in inline scripts, producing early parse failures that halt app startup. Replacing that expression with a broadly compatible reducer branch removes the parser risk without changing behavior.
+
+**Summarised changes:**
+- Replaced `??=` usage in `renderPostDetail` category grouping reducer with explicit array initialisation logic.
+- Kept post parsing, filtering, UI layout, and diff rendering behavior unchanged.
+- Added this decision-log entry at the end of `AGENTS.md` in chronological order.

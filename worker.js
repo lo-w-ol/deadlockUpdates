@@ -238,7 +238,7 @@ function buildHtml() {
   function renderPostDetail(gid){
     const p = state.posts.find(x=>x.gid===gid); if (!p){ location.hash='#/'; return; }
     el.home.classList.add('hidden'); el.detail.classList.remove('hidden');
-    const byCat = p.changes.reduce((m,c)=>((m[c.category] ??= []).push(c), m),{});
+    const byCat = p.changes.reduce((m,c)=>{ if (!m[c.category]) m[c.category] = []; m[c.category].push(c); return m; },{});
     el.detail.innerHTML = '<h2>'+escapeHtml(p.title)+'</h2><p class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Open on Steam</a></p>'+
       '<button id="toggle-raw">Toggle raw text</button><pre id="raw" class="hidden">'+escapeHtml(p.rawText)+'</pre>'+
       Object.entries(byCat).map(([cat,list])=>'<section><h3>['+escapeHtml(cat)+']</h3>'+list.map(c=>'<div class="change"><div>'+escapeHtml(c.raw)+'</div><div class="chips">'+c.tags.map(chip).join('')+chip(c.changeType,'tag-'+c.changeType)+'</div></div>').join('')+'</section>').join('');
