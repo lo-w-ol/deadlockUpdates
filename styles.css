@@ -27,3 +27,6 @@ button { cursor:pointer; }
 .tag-nerf { border-color:#7f1d1d; color:#fca5a5; }
 .tag-fix,.tag-qol,.tag-mechanics { border-color:#4b5563; color:#d1d5db; }
 @media (max-width: 900px){ .grid{ grid-template-columns:1fr; } header{ position:static; } }
+.patch-category { margin-top: .8rem; }
+.patch-category h4 { margin: .2rem 0 .45rem 0; color: #cbd5e1; }
+.patch-divider { height: 1px; background: linear-gradient(90deg, transparent, #3b4a72, transparent); margin: .8rem 0 1.1rem; }
