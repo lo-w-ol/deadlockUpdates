@@ -141,3 +141,18 @@ The existing default cards only previewed a limited slice of changes and did not
 - Added supporting CSS rules for category section spacing/heading and patch divider styling.
 - Synced the Worker-embedded `/app.js` and `/styles.css` bundles with the updated standalone source files.
 - Left parsing, API routes, refresh logic, and detail-view behavior intentionally unchanged.
+
+## Add Fallback Line Parsing for Non-Bulleted Steam Patch Posts
+**Date and time:** 2026-05-27 02:00 UTC
+
+**Summarised context:**
+Reviewed user-reported examples where recent gameplay update posts rendered with "Parsed changes: 0" and inspected current client parsing logic in `app.js`/embedded Worker bundle to confirm extraction only accepted explicit bullet markers.
+
+**Summarised reasoning:**
+Some Steam announcements are not consistently formatted with `-`/`•` bullets or bracketed section headers, so strict bullet-only parsing drops valid change lines. Adding a compatibility fallback that treats non-empty content lines as changes (while still handling section-like headings) restores visibility for those posts without changing fetch or storage behavior.
+
+**Summarised changes:**
+- Expanded section/bullet parsing to support additional bullet markers (`*`, `[*]`) and a fallback mode that captures non-empty lines as change entries.
+- Added heading detection for common category-only lines so category context is preserved when present.
+- Synced the same parser update into the Worker-embedded `APP_JS` bundle.
+- Left API routes, KV refresh behavior, and filter UI structure unchanged.
