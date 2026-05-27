@@ -258,3 +258,19 @@ KV usage can be reduced significantly by deferring snapshot reads to only data-d
 - Updated cache headers: static assets and robots now cache publicly for longer, sitemap uses shorter public cache, and public HTML pages use short public cache.
 - Kept `/admin/refresh` auth-first and uncached (`no-store`), and removed visitor IP from `/api/posts` response payload.
 - Left Steam fetch parameters, parser/classifier behavior, static character list behavior, and scheduled daily cron trigger unchanged.
+
+## Restore Missing KV Snapshot Module State to Prevent Worker 1101
+**Date and time:** 2026-05-27 05:02 UTC
+
+**Summarised context:**
+Reviewed `worker.js` after the KV optimisation update and traced runtime references used by `getCachedPostsSnapshot()`, `readStoredNews()`, and `refreshStoredNews()` that could throw at module scope if missing.
+
+**Summarised reasoning:**
+The Worker 1101 exception was caused by missing top-level declarations for new snapshot key and memory-cache state introduced in the KV optimisation. Reinstating those constants and `let` bindings at module scope resolves runtime reference errors without altering route or SEO behavior.
+
+**Summarised changes:**
+- Added `NEWS_SNAPSHOT_V2_KEY` with value `'steam_news_snapshot_v2'` near existing Worker constants.
+- Added `MEMORY_SNAPSHOT_TTL_MS` with value `5 * 60 * 1000` near existing Worker constants.
+- Added module-level cache state variables: `memorySnapshot`, `memorySnapshotExpiresAt`, and `memorySnapshotPromise`.
+- Re-checked `getCachedPostsSnapshot()`, `readStoredNews()`, and `refreshStoredNews()` for additional undefined identifiers and left logic unchanged.
+- Left route handling, API behavior, and SEO page/rendering behavior intentionally unchanged.

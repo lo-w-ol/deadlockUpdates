@@ -4,6 +4,13 @@ const STYLES_CSS = ':root { color-scheme: dark; --bg:#0b1020; --card:#121a31; --
 const APP_ID = 1422450;
 const NEWS_KEY = 'steam_news_items_v1';
 const NEWS_META_KEY = 'steam_news_meta_v1';
+const NEWS_SNAPSHOT_V2_KEY = 'steam_news_snapshot_v2';
+const MEMORY_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
+
+let memorySnapshot = null;
+let memorySnapshotExpiresAt = 0;
+let memorySnapshotPromise = null;
+
 const MAX_ITEMS = 100;
 const SITE_NAME = 'Deadlock Updates Tracker';
 // Intentionally static registry for canonical Deadlock character pages.
