@@ -239,3 +239,22 @@ A single static character registry is needed to keep canonical slugs stable, gua
 - Updated server-rendered homepage and post-detail pages with internal links to character pages.
 - Updated sitemap generation to include `/characters` and every canonical character detail URL from the static registry.
 - Left `/api/posts`, KV storage/refresh logic, scheduled refresh, and `/admin/refresh` authorization behavior unchanged.
+
+## Reduce KV Read/Write Volume with Route-Scoped Snapshot Loading and V2 Snapshot Key
+**Date and time:** 2026-05-27 04:36 UTC
+
+**Summarised context:**
+Reviewed the Worker request flow and identified that `readStoredNews(env)` was called before route branching, causing KV reads on non-data routes (`/health`, `/robots.txt`, `/app.js`, `/styles.css`) and amplifying quota usage during normal page loads.
+
+**Summarised reasoning:**
+KV usage can be reduced significantly by deferring snapshot reads to only data-dependent routes, adding isolate-memory snapshot reuse, and avoiding refresh writes when payload content is unchanged. A v2 single-key snapshot format also cuts cold-read operations while keeping backward compatibility with existing KV keys.
+
+**Summarised changes:**
+- Moved KV snapshot reads out of the top of `fetch()` and into only routes that require cached posts (`/`, `/api/posts`, `/sitemap.xml`, `/post/:gid`, `/characters`, `/characters/:slug`).
+- Added module-level in-memory snapshot caching with TTL and in-flight promise deduplication via `getCachedPostsSnapshot(env)`.
+- Added a new v2 KV key (`deadlock-news-snapshot-v2`) storing `{ items, meta }` in one document; `readStoredNews` now attempts v2 first and falls back to legacy two-key reads.
+- Added SHA-256 hashing for refreshed item payloads and changed refresh logic to skip KV writes when content hash is unchanged.
+- Kept legacy keys written when content changes for compatibility while introducing the v2 snapshot write path.
+- Updated cache headers: static assets and robots now cache publicly for longer, sitemap uses shorter public cache, and public HTML pages use short public cache.
+- Kept `/admin/refresh` auth-first and uncached (`no-store`), and removed visitor IP from `/api/posts` response payload.
+- Left Steam fetch parameters, parser/classifier behavior, static character list behavior, and scheduled daily cron trigger unchanged.
