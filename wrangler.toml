@@ -8,5 +8,5 @@ crons = ["0 3 * * *"]
 
 [[kv_namespaces]]
 binding = "DEADLOCK_KV"
-id = "REPLACE_WITH_PROD_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+id = "95030b91aabe47278c426f1ea48fd5ae"
+preview_id = "95030b91aabe47278c426f1ea48fd5ae"
