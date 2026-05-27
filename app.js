@@ -91,7 +91,23 @@
   function diffKind(type){ if (type==='buff') return 'buff'; if (type==='nerf') return 'nerf'; if (['changed','rework','added','removed','mechanics','qol'].includes(type)) return 'change'; return 'other'; }
   function renderDiffLine(change){ var kind = diffKind(change.changeType); var prefix = kind==='buff' ? '+' : kind==='nerf' ? '-' : kind==='change' ? '~' : '•'; var cls = kind==='buff' ? 'diff-buff' : kind==='nerf' ? 'diff-nerf' : kind==='change' ? 'diff-change' : 'diff-other'; return '<div class="diff-line '+cls+'">'+prefix+' '+escapeHtml(change.raw)+'</div>'; }
 
-  function renderHome(){ el.detail.classList.add('hidden'); el.home.classList.remove('hidden'); el.home.innerHTML = state.filtered.map(function(p){ var tops = summaryTop(p); var preview = p.changes.slice(0,12).map(renderDiffLine).join(''); return '<article class="card"><h3><a href="#/post/'+p.gid+'">'+escapeHtml(p.title)+'</a></h3><div class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Steam URL</a></div><div class="chips">'+p.categories.map(function(c){ return chip(c); }).join('')+'</div><p class="muted">Parsed changes: '+p.changes.length+'</p><p class="muted">Top: '+escapeHtml(tops)+'</p><div class="diff-list">'+preview+'</div></article>'; }).join('') || '<div class="card">No posts match current filters.</div>'; }
+  function renderPatchCategories(p){
+    var byCat = p.changes.reduce(function(m,c){ if (!m[c.category]) m[c.category] = []; m[c.category].push(c); return m; }, {});
+    return Object.entries(byCat).map(function(entry){
+      var cat = entry[0], list = entry[1];
+      return '<section class="patch-category"><h4>['+escapeHtml(cat)+']</h4><div class="diff-list">'+list.map(renderDiffLine).join('')+'</div></section>';
+    }).join('');
+  }
+
+  function renderHome(){
+    el.detail.classList.add('hidden');
+    el.home.classList.remove('hidden');
+    el.home.innerHTML = state.filtered.map(function(p, idx){
+      var tops = summaryTop(p);
+      var divider = idx < state.filtered.length - 1 ? '<div class="patch-divider" aria-hidden="true"></div>' : '';
+      return '<article class="card"><h3><a href="#/post/'+p.gid+'">'+escapeHtml(p.title)+'</a></h3><div class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Steam URL</a></div><div class="chips">'+p.categories.map(function(c){ return chip(c); }).join('')+'</div><p class="muted">Parsed changes: '+p.changes.length+'</p><p class="muted">Top: '+escapeHtml(tops)+'</p>'+renderPatchCategories(p)+'</article>'+divider;
+    }).join('') || '<div class="card">No posts match current filters.</div>';
+  }
   function renderPostDetail(gid){ var p = state.posts.find(function(x){ return x.gid===gid; }); if (!p){ location.hash='#/'; return; } el.home.classList.add('hidden'); el.detail.classList.remove('hidden'); var byCat = p.changes.reduce(function(m,c){ if (!m[c.category]) m[c.category] = []; m[c.category].push(c); return m; },{}); el.detail.innerHTML = '<h2>'+escapeHtml(p.title)+'</h2><p class="muted">'+new Date(p.date).toLocaleString()+' • <a href="'+p.url+'" target="_blank" rel="noopener">Open on Steam</a></p>'+'<button id="toggle-raw">Toggle raw text</button><pre id="raw" class="hidden">'+escapeHtml(p.rawText)+'</pre>'+Object.entries(byCat).map(function(entry){ var cat = entry[0], list = entry[1]; return '<section><h3>['+escapeHtml(cat)+']</h3>'+list.map(function(c){ return '<div class="change"><div>'+escapeHtml(c.raw)+'</div><div class="chips">'+c.tags.map(chip).join('')+chip(c.changeType,'tag-'+c.changeType)+'</div></div>'; }).join('')+'</section>'; }).join(''); document.getElementById('toggle-raw').onclick = function(){ document.getElementById('raw').classList.toggle('hidden'); }; }
 
   function routeRender(){ var m=location.hash.match(/^#\/post\/(.+)$/); if (m) renderPostDetail(m[1]); else renderHome(); }

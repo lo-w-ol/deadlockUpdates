@@ -124,3 +124,20 @@ The Worker was still serving an embedded legacy app bundle that fetched Steam di
 - Updated embedded HTML shell copy in `worker.js` to reflect Worker API sourcing (noscript/header/refresh button wording).
 - Left KV refresh, admin refresh auth, and scheduled refresh behavior unchanged.
 - Added this decision-log entry at the end of `AGENTS.md` in chronological order.
+
+## Default View Groups Full Patch Diff by Category with Patch Dividers
+**Date and time:** 2026-05-27 01:51 UTC
+
+**Summarised context:**
+Reviewed the request to make the default loaded view show all patch changes in git-style lines, grouped under category headings for each patch post and visually separated between patches.
+
+**Summarised reasoning:**
+The existing default cards only previewed a limited slice of changes and did not provide per-patch category grouping. Rendering full grouped diff blocks on the home view improves scanability and matches the requested structure: patch -> category -> git-style lines, with a clear divider before the next patch.
+
+**Summarised changes:**
+- Updated default home rendering to show all parsed changes for each patch, grouped by category headings (e.g., `[Category]`) with git-style colored diff lines under each group.
+- Added a reusable `renderPatchCategories` helper to build grouped home-view sections from parsed changes.
+- Added visual patch dividers between patch cards in the default list view.
+- Added supporting CSS rules for category section spacing/heading and patch divider styling.
+- Synced the Worker-embedded `/app.js` and `/styles.css` bundles with the updated standalone source files.
+- Left parsing, API routes, refresh logic, and detail-view behavior intentionally unchanged.
