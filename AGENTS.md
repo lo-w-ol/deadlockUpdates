@@ -172,3 +172,22 @@ The parser fallback correctly captures non-empty lines, but Steam posts that arr
 - Normalized line whitespace before final join to avoid merged or malformed output lines.
 - Synced the same normalization update into the Worker-embedded `APP_JS` bundle in `worker.js` so `/app.js` served by the Worker matches the standalone source.
 - Left API routes, KV refresh behavior, and filter behavior unchanged.
+
+## Semantic Patch-Note Classification and Colour Mapping Overhaul
+**Date and time:** 2026-05-27 02:52 UTC
+
+**Summarised context:**
+Reviewed the parser/classification flow in `app.js` and the Worker-embedded `APP_JS` bundle in `worker.js`, along with current diff rendering and CSS classes used to color default-view patch lines.
+
+**Summarised reasoning:**
+The prior keyword-heavy classifier produced coarse types and collapsed many meaningful balance changes into generic yellow rows, which made obvious buffs/nerfs read incorrectly. A deterministic semantic scoring layer with explicit stat-direction rules, contextual phrase handling, and mixed/rework/bugfix separation improves readability while preserving the no-build client parser model.
+
+**Summarised changes:**
+- Replaced broad keyword classification with semantic helper-based classification that returns canonical `buff|nerf|mixed|rework|bugfix|neutral`, plus `confidence` and `classificationReason`.
+- Added richer stat support/direction handling, contextual phrase handling (e.g., `now also grants`, `no longer grants`, `no longer prevents`), and cautious objective/system treatment.
+- Updated diff rendering to map directly to semantic classes and prefixes from final classification output.
+- Updated Type filter options to canonical types only.
+- Added lightweight classifier fixtures exposed via `window.__deadlockDebug.testClassifier()`.
+- Updated standalone `app.js` and synced identical logic into Worker-embedded `APP_JS` in `worker.js`.
+- Updated `styles.css` and synced Worker-embedded `STYLES_CSS` for distinct semantic color classes.
+- Left Worker `/api/posts`, KV cache flow, cron refresh, admin refresh endpoint, and Wrangler config unchanged.
