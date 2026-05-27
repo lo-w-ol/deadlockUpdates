@@ -220,3 +220,22 @@ Search engines index static, semantic HTML more reliably than JS-only shells. Ad
 
 **Remaining TODOs:**
 - Consider adding persistent OG image support for richer social snippets if a stable image source is introduced.
+
+## Add Static Character SEO Routes and Crawlable Hero Patch History Pages
+**Date and time:** 2026-05-27 03:26 UTC
+
+**Summarised context:**
+Reviewed existing Worker routing/SEO rendering in `worker.js`, existing `/api/posts` and KV refresh flow constraints, and the request to add crawlable character index/detail pages backed by the current cached Steam data model.
+
+**Summarised reasoning:**
+A single static character registry is needed to keep canonical slugs stable, guarantee route/sitemap coverage for every character, and avoid drift from noisy dynamically-detected entities. Server-rendered `/characters` and `/characters/:slug` pages can reuse cached post content and parser-compatible hero extraction without changing public API security or refresh behavior.
+
+**Summarised changes:**
+- Added a single hardcoded `DEADLOCK_CHARACTERS` registry with canonical slugs and aliases (including `Mo & Krill` alias variants) and a comment noting this is intentionally static for now.
+- Added Worker-side helper utilities for slug normalization, character matching, and hero-line extraction from cached post content.
+- Added crawlable `/characters` index page listing all static characters (including zero-change entries) with summary metadata.
+- Added crawlable `/characters/:slug` detail pages with grouped per-patch hero changes and empty-state rendering when no changes are detected.
+- Added optional compatibility redirect route `/hero/:slug` -> `/characters/:slug` (301).
+- Updated server-rendered homepage and post-detail pages with internal links to character pages.
+- Updated sitemap generation to include `/characters` and every canonical character detail URL from the static registry.
+- Left `/api/posts`, KV storage/refresh logic, scheduled refresh, and `/admin/refresh` authorization behavior unchanged.
