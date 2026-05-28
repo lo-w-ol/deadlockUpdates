@@ -324,3 +324,36 @@ The previous edit removed embedded assets correctly but also inadvertently dropp
 - Updated `characterBySlug` to use the precomputed slug map first.
 - Updated character data collection and post-related-character rendering to use alias map lookups instead of repeated `DEADLOCK_CHARACTERS.find(...)` scans.
 - Left route structure, SEO endpoints, sitemap, cron refresh, admin refresh auth, and asset-binding strategy unchanged.
+
+## Add Combined Steam + Forum Changelog Crawl with Reply Subpatch Support and Snapshot Dedupe
+**Date and time:** 2026-05-28 00:20 UTC
+
+**Summarised context:**
+Reviewed the existing Worker ingestion path (`worker.js`) which only pulled Steam `ISteamNews/GetNewsForApp/v2`, existing single-key KV snapshot flow (`steam_news_snapshot_v2`), route-scoped snapshot loading/memory reuse, and client rendering in `app.js` to understand where multi-source data and source labeling needed to be integrated.
+
+**Summarised reasoning:**
+To capture forum-only micro-updates while keeping KV efficiency, the ingestion flow needed a bounded forum crawler, source-aware normalization, and deterministic dedupe merged into the existing single snapshot write path. Reply posts must remain as separate subpatch entries when meaningful even if thread post #1 duplicates Steam embed content.
+
+**Summarised changes:**
+- Added forum crawling helpers for index pages, thread URL extraction, thread fetch, post parsing, and forum-post normalization into source-typed items.
+- Added caps and forum load protections (`MAX_FORUM_PAGES`, `MAX_FORUM_THREADS`, `MAX_FORUM_REPLIES_PER_THREAD`) plus thread URL dedupe and cache hints on forum fetches.
+- Added canonicalization/hash helpers and merged dedupe flow that combines Steam + forum into one item list while preserving unique forum reply/subpatch posts.
+- Updated refresh flow to build combined snapshot metadata (`steamCount`, `forumCount`, `dedupedCount`) and keep single v2 KV document writes only when hash changes.
+- Updated source-aware UI wording for original links and source labels across server-rendered post detail and client list/detail views.
+- Left route-scoped KV reads, memory snapshot TTL/in-flight dedupe behavior, and static-route no-KV-read behavior unchanged.
+
+## Add Secret Path Refresh Endpoint with Per-IP Hourly Rate Limiting
+**Date and time:** 2026-05-28 00:34 UTC
+
+**Summarised context:**
+Reviewed the latest request for a direct path-based refresh trigger and inspected current refresh routes in `worker.js` (`/admin/refresh`) plus existing KV usage constraints to ensure security and abuse protections could be added without affecting normal visitor routes.
+
+**Summarised reasoning:**
+A secret-in-path refresh route enables simple manual recrawl triggering from a browser, but needs defense-in-depth. Constant-time secret comparison and a per-IP fixed-window limiter (10 attempts/hour) reduce brute-force and abuse risk while preserving the single-snapshot refresh architecture.
+
+**Summarised changes:**
+- Added configurable path refresh secret support via `REFRESH_PATH_SECRET` and new route pattern `/refresh/{secret}`.
+- Added helper utilities for client IP extraction, constant-time-like secret comparison, and per-IP hourly limit checks backed by KV TTL counters.
+- Enforced limit of 10 refresh attempts per IP per hour with HTTP `429` + `retry-after` when exceeded.
+- Kept refresh behavior on success routed through existing `refreshStoredNews` single-snapshot pipeline (no per-thread/per-post KV writes added).
+- Left existing `/admin/refresh` bearer-token route and scheduled refresh behavior unchanged.
