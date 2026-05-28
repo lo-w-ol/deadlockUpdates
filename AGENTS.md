@@ -341,3 +341,19 @@ To capture forum-only micro-updates while keeping KV efficiency, the ingestion f
 - Updated refresh flow to build combined snapshot metadata (`steamCount`, `forumCount`, `dedupedCount`) and keep single v2 KV document writes only when hash changes.
 - Updated source-aware UI wording for original links and source labels across server-rendered post detail and client list/detail views.
 - Left route-scoped KV reads, memory snapshot TTL/in-flight dedupe behavior, and static-route no-KV-read behavior unchanged.
+
+## Add Secret Path Refresh Endpoint with Per-IP Hourly Rate Limiting
+**Date and time:** 2026-05-28 00:34 UTC
+
+**Summarised context:**
+Reviewed the latest request for a direct path-based refresh trigger and inspected current refresh routes in `worker.js` (`/admin/refresh`) plus existing KV usage constraints to ensure security and abuse protections could be added without affecting normal visitor routes.
+
+**Summarised reasoning:**
+A secret-in-path refresh route enables simple manual recrawl triggering from a browser, but needs defense-in-depth. Constant-time secret comparison and a per-IP fixed-window limiter (10 attempts/hour) reduce brute-force and abuse risk while preserving the single-snapshot refresh architecture.
+
+**Summarised changes:**
+- Added configurable path refresh secret support via `REFRESH_PATH_SECRET` and new route pattern `/refresh/{secret}`.
+- Added helper utilities for client IP extraction, constant-time-like secret comparison, and per-IP hourly limit checks backed by KV TTL counters.
+- Enforced limit of 10 refresh attempts per IP per hour with HTTP `429` + `retry-after` when exceeded.
+- Kept refresh behavior on success routed through existing `refreshStoredNews` single-snapshot pipeline (no per-thread/per-post KV writes added).
+- Left existing `/admin/refresh` bearer-token route and scheduled refresh behavior unchanged.

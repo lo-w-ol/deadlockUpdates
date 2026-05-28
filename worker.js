@@ -12,6 +12,34 @@ let memorySnapshot = null;
 let memorySnapshotExpiresAt = 0;
 let memorySnapshotPromise = null;
 
+const REFRESH_RATE_LIMIT_MAX = 10;
+const REFRESH_RATE_LIMIT_WINDOW_SEC = 60 * 60;
+
+function getClientIp(request) {
+  return (request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
+}
+function safeCompareSecret(a, b) {
+  a = String(a || '');
+  b = String(b || '');
+  if (!a || !b || a.length !== b.length) return false;
+  var mismatch = 0;
+  for (var i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+async function checkAndBumpRefreshRateLimit(env, ip) {
+  var now = Date.now();
+  var bucket = Math.floor(now / (REFRESH_RATE_LIMIT_WINDOW_SEC * 1000));
+  var key = 'refresh_rate:' + ip + ':' + bucket;
+  var raw = await env.DEADLOCK_KV.get(key);
+  var count = raw ? parseInt(raw, 10) : 0;
+  if (!Number.isFinite(count) || count < 0) count = 0;
+  if (count >= REFRESH_RATE_LIMIT_MAX) return { allowed: false, remaining: 0 };
+  count += 1;
+  await env.DEADLOCK_KV.put(key, String(count), { expirationTtl: REFRESH_RATE_LIMIT_WINDOW_SEC + 60 });
+  return { allowed: true, remaining: Math.max(0, REFRESH_RATE_LIMIT_MAX - count) };
+}
+
+
 // Intentionally static registry for canonical Deadlock character pages.
 // This is the single source of truth for character SEO routes for now and can
 // later be replaced by an API/source-driven registry without changing routes.
@@ -194,6 +222,20 @@ export default {
       if (!post) return new Response('Post not found', { status: 404, headers: { 'cache-control': 'public, max-age=300, s-maxage=900' } });
       return new Response(buildPostHtml(url.origin, post), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=900' } });
     }
+
+    if (url.pathname.startsWith('/refresh/')) {
+      const provided = decodeURIComponent(url.pathname.slice('/refresh/'.length));
+      const expected = env.REFRESH_PATH_SECRET || '';
+      if (!safeCompareSecret(provided, expected)) return new Response('not found', { status: 404, headers: { 'cache-control': 'no-store' } });
+      const ip = getClientIp(request);
+      const limit = await checkAndBumpRefreshRateLimit(env, ip);
+      if (!limit.allowed) {
+        return Response.json({ ok: false, error: 'rate_limited', maxPerHour: REFRESH_RATE_LIMIT_MAX }, { status: 429, headers: { 'cache-control': 'no-store', 'retry-after': String(REFRESH_RATE_LIMIT_WINDOW_SEC) } });
+      }
+      const refreshed = await refreshStoredNews(env, 'path-refresh');
+      return Response.json({ ok: true, count: refreshed.items.length, changed: refreshed.changed, lastRefreshedAt: refreshed.lastRefreshedAt, remainingThisHour: limit.remaining }, { headers: { 'cache-control': 'no-store' } });
+    }
+
     if (url.pathname === '/admin/refresh') {
       const auth = request.headers.get('authorization') || '';
       const expected = env.ADMIN_REFRESH_TOKEN ? 'Bearer ' + env.ADMIN_REFRESH_TOKEN : '';
